@@ -290,3 +290,196 @@ button.tb-choice {
     text-align: left;
   }
 }
+
+/* ------------------------------------------------------------------ HoldCard + HoldDetails (0.4.0, C369)
+   The card reads like a letter, not a log: the view is body text (the kit font, not mono) on paper inside the tile, its
+   lines keep their breaks and indents (--indent = leading spaces) and long lines wrap. The details modal is the technical
+   view: facts as label/value rows, the input as mono JSON in a scrolling block. */
+.tb-hold-card {
+  display: grid;
+  gap: var(--tb-s3);
+  min-width: 0;
+}
+.tb-hold-card > .tb-hold-summary {
+  margin: 0;
+  font-size: var(--tb-text-title);
+  line-height: var(--tb-leading-title);
+  overflow-wrap: anywhere;
+}
+.tb-hold-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s1) var(--tb-s2);
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-label);
+  overflow-wrap: anywhere;
+}
+.tb-hold-by strong {
+  color: var(--tb-ink);
+  font-weight: var(--tb-weight-label);
+  unicode-bidi: isolate;
+}
+.tb-hold-view-block {
+  display: grid;
+  gap: var(--tb-s1);
+  min-width: 0;
+}
+.tb-hold-caption {
+  margin: 0;
+  color: var(--tb-muted);
+  font-size: var(--tb-text-label);
+  font-weight: var(--tb-weight-label);
+}
+/* the frame carries the ring and clips the fade to the brick corners */
+.tb-hold-view-frame {
+  position: relative;
+  border-radius: var(--tb-radius-brick);
+  background: var(--tb-paper);
+  box-shadow: var(--tb-ring);
+  overflow: hidden;
+}
+.tb-hold-view-frame.is-more::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--tb-hair);
+  bottom: var(--tb-hair);
+  height: var(--tb-s12);
+  background: linear-gradient(to bottom, transparent, var(--tb-paper));
+  pointer-events: none;
+}
+.tb-hold-view {
+  position: relative;
+  max-height: min(480px, 60vh);
+  overflow: auto;
+  padding: var(--tb-s3) var(--tb-s4);
+  color: var(--tb-ink);
+  font-size: var(--tb-text-body);
+  line-height: var(--tb-leading-body);
+  overflow-wrap: anywhere;
+}
+.tb-hold-more {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-label);
+  font-weight: var(--tb-weight-label);
+}
+.tb-hold-line {
+  min-height: calc(var(--tb-leading-body) * 1em);
+  padding-inline-start: calc(var(--indent, 0) * 0.5em);
+  white-space: pre-wrap;
+  unicode-bidi: isolate;
+}
+.tb-hold-why {
+  display: grid;
+  gap: var(--tb-s1);
+}
+.tb-hold-why > :is(h3, h4, h5) {
+  margin: 0;
+  color: var(--tb-muted);
+  font-size: var(--tb-text-label);
+  font-weight: var(--tb-weight-label);
+}
+.tb-hold-why > p {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  overflow-wrap: anywhere;
+}
+.tb-hold-why strong {
+  color: var(--tb-ink);
+  font-weight: var(--tb-weight-label);
+}
+.tb-hold-why > .tb-hold-reason > span {
+  unicode-bidi: isolate;
+}
+.tb-hold-facts {
+  display: grid;
+  gap: var(--tb-s1);
+  margin: 0;
+  font-size: var(--tb-text-label);
+}
+.tb-hold-facts > div {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+  gap: var(--tb-s3);
+}
+.tb-hold-facts dt {
+  color: var(--tb-muted);
+  font-weight: var(--tb-weight-label);
+}
+.tb-hold-facts dd {
+  margin: 0;
+  color: var(--tb-ink);
+  overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+}
+.tb-hold-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s2);
+}
+.tb-hold-actions:empty {
+  display: none;
+}
+.tb-hold-busy {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-label);
+}
+/* one block child in the dialog body grid: a scrolling JSON block keeps its own height (a scroll container as a grid
+   item would shrink to fit and scroll in a 70px slot); a long word in the title (an e-mail address) wraps */
+.tb-hold-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tb-s3);
+  min-width: 0;
+}
+.tb-hold-details-content > * {
+  flex: none;
+}
+.tb-hold-details .tb-dialog-head > h2 {
+  overflow-wrap: anywhere;
+}
+.tb-hold-details .tb-hold-facts > div {
+  grid-template-columns: minmax(110px, 160px) minmax(0, 1fr);
+}
+.tb-hold-input-head {
+  margin: var(--tb-s2) 0 0;
+  font-size: var(--tb-text-title);
+}
+.tb-hold-not-kept {
+  margin: 0;
+  color: var(--tb-muted);
+}
+.tb-hold-json {
+  max-height: 360px;
+  margin: 0;
+  overflow: auto;
+  padding: var(--tb-s3) var(--tb-s4);
+  border-radius: var(--tb-radius-brick);
+  background: var(--tb-plate);
+  color: var(--tb-ink);
+  font-family: var(--tb-font-mono);
+  font-size: var(--tb-text-tag);
+  line-height: 20px;
+}
+.tb-hold-json > pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tb-hold-error {
+  display: grid;
+  gap: var(--tb-s2);
+  justify-items: start;
+}
+@media (max-width: 560px) {
+  .tb-hold-facts > div,
+  .tb-hold-details .tb-hold-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

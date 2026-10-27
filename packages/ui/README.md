@@ -25,6 +25,30 @@ Put `class="tb-root"` on the page root. Dark values apply under `data-theme="dar
 
 App stills (10 apps: the 7 opt2 apps, Observer, Live Artifacts and Creative): copy `node_modules/@opt2-tealbrick/ui/assets/apps/` to your public folder, then `appArt(productId, "/that/path/")`. This is interim, until the manifest carries `ui.art`.
 
+## Hold cards (0.4.0, C369)
+
+One card and one "More details" modal for every app's Holds page. Pass the SDK rows as they are: an SDK `Receipt` from
+`tb.holds_list` fits `HoldReceipt`, and the answer of `tb.hold_details` fits `HoldDetails`.
+
+```tsx
+import { HoldCard, HoldDetails } from "@opt2-tealbrick/ui";
+
+<HoldCard hold={{ ...hold, opTitle }} busy={busy} onApprove={approve} onDeny={deny} onDetails={() => setOpen(true)} />
+<HoldDetails open={open} onClose={() => setOpen(false)} holdId={hold.id} title={hold.summary}
+  load={(holdId) => callOp<HoldDetails>("tb.hold_details", { holdId })} />
+```
+
+- The card shows the summary as the heading, who asked, the hold view as text lines (breaks and indents kept, long lines
+  wrap, never HTML), why it waits (`familyText`, the hold reason, the rule that held it), and when it was asked and when it
+  expires in the viewer's time zone. It shows no raw op or family ids. A run of blank lines shows as one; a view taller
+  than its box says "N more lines — scroll to read all". Approve / Deny exist only while the status is `held` and are
+  disabled after `expiresAt`.
+- The modal shows the technical facts (local time + UTC ISO), and the input as JSON while it is kept. Otherwise it says
+  why the input is missing (`inputState`: too large, removed 7 days after the decision, unreadable, not kept).
+- `familyText(family)` and `FAMILY_TEXT` give the plain words of a hold family (the Portal GUI uses the same words).
+  Unknown ids come back as words ("night_call" → "Night call").
+- Tests can fix the clock and the zone: `now`, `timeZone`, `locale`.
+
 ## Guard (run it in CI)
 
 ```sh

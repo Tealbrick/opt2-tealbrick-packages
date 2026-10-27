@@ -1,4 +1,4 @@
-/* @opt2-tealbrick/ui — Tealbrick design system: tokens, fonts, components, guard (0.2.0).
+/* @opt2-tealbrick/ui — Tealbrick design system: tokens, fonts, components, guard (0.4.0).
    CSS: import "@opt2-tealbrick/ui/tokens.css" (tokens + self-hosted Nunito + base + scrollbars) and
    "@opt2-tealbrick/ui/components.css". Guard: `check-system src` in CI. See README.md and CHANGELOG.md. */
 export { APP_COLOUR_IDS, APPS, type AppArt, type AppGroup, type AppIdentity, appArt, appColour, iconCrop } from "./apps.ts";
@@ -17,6 +17,16 @@ export {
 } from "./components/button.tsx";
 export { Dialog, type DialogProps } from "./components/dialog.tsx";
 export { Field, type FieldInfo, fieldAria, NativeSelect, type SelectOption, Textarea, TextInput, useField } from "./components/field.tsx";
+export {
+  HOLD_TEXT_MAX,
+  HoldCard,
+  type HoldCardProps,
+  HoldDetails,
+  type HoldDetailsProps,
+  HoldView,
+  INPUT_NOT_KEPT,
+  INPUT_STATE_TEXT,
+} from "./components/hold-card.tsx";
 export { AppIcon, AppMark, appName, BrandMark, type IconSize, Lockup } from "./components/identity.tsx";
 export { ArrowIcon, CartIcon, CloseIcon, cx, Ink, inked, SearchIcon } from "./components/ink.tsx";
 export { Menu, PayPill, Tabs, Toast } from "./components/nav.tsx";
@@ -40,4 +50,24 @@ export {
   Swatch,
   Table,
 } from "./components/surfaces.tsx";
+export {
+  clampText,
+  escapeHidden,
+  FAMILY_TEXT,
+  type FamilyText,
+  familyText,
+  type HoldCaller,
+  type HoldFamily,
+  type HoldInputState,
+  type HoldReceipt,
+  type HoldTime,
+  holdTime,
+  humanizeId,
+  isHiddenChar,
+  relativeTime,
+  type TimeOptions,
+  type ViewLine,
+  viewLines,
+  visibleText,
+} from "./holds.ts";
 export { cssName, cssVar, dark, resolved, resolvedDark, type TokenName, tokens } from "./tokens.ts";
