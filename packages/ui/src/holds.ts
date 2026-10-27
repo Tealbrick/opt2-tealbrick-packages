@@ -39,27 +39,38 @@ export interface HoldReceipt {
   expiresAt: number | null;
 }
 
-/** C369 D4: the answer of the owner-only person op `tb.hold_details {holdId}` (field names = spec). */
+/** C369 D4: what `tb.hold_details` says about the held input (spec HOLD_INPUT_STATES). */
+export type HoldInputState = "kept" | "too_large" | "wiped" | "unreadable" | "none";
+
+/** C369 D4 (spec 0.1.84): the answer of the owner-only person op `tb.hold_details {holdId}`. Field names = spec; times are
+    UTC ISO 8601 strings (a number of ms is accepted too). An SDK `HoldDetails` is assignable. */
 export interface HoldDetails {
   holdId: string;
+  /** the same row: a hold's id stays its receipt id */
+  receiptId: string;
+  status: string;
   op: string;
+  /** the op's manifest title (the op id when the op is gone) */
   opTitle: string;
-  /** dynamic ops: the inner tool name */
+  /** dynamic ops: the tool name of the call */
   tool?: string;
   family: string;
+  /** = `Receipt.holdReason` */
   reason?: string;
   heldBy?: string | null;
   caller: HoldCaller;
   callId: string | null;
-  receiptId: string;
   inputDigest: string;
-  /** the held call's input as JSON text (after the op's redact rules); null when it is no longer kept */
-  input: string | null;
-  createdAt: number;
-  expiresAt: number | null;
-  viewSha256: string;
-  /** app-specific technical facts (e.g. Connect's upstream, method, path) */
-  extra?: unknown;
+  /** the redacted input as JSON; null unless `inputState` is `kept` */
+  input: unknown;
+  inputState: HoldInputState;
+  /** when the kept input is wiped (terminal status + 7 days); null while the hold waits, and for too_large / none */
+  inputWipeAt: string | number | null;
+  createdAt: string | number;
+  expiresAt: string | number | null;
+  decidedAt: string | number | null;
+  /** `sha256:` hex of the view the owner saw; null for a hold made before spec 0.1.84 */
+  viewSha256: string | null;
 }
 
 export type FamilyText = { label: string; sentence: string };
@@ -146,9 +157,10 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["minute", 60_000],
 ];
 
-/** A time in the viewer's zone (Intl): relative ("5 minutes ago", "in 2 days"), absolute with the zone name, and UTC. null
-    for a missing or invalid time. */
-export function holdTime(ms: number | null | undefined, o: TimeOptions = {}): HoldTime | null {
+/** A time (ms, or an ISO 8601 string) in the viewer's zone (Intl): relative ("5 minutes ago", "in 2 days"), absolute with
+    the zone name, and UTC. null for a missing or invalid time. */
+export function holdTime(at: number | string | null | undefined, o: TimeOptions = {}): HoldTime | null {
+  const ms = typeof at === "string" ? Date.parse(at) : at;
   if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return null;

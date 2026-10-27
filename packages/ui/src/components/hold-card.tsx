@@ -3,6 +3,7 @@ import { APPS } from "../apps.ts";
 import {
   familyText,
   type HoldDetails as HoldDetailsRecord,
+  type HoldInputState,
   type HoldReceipt,
   type HoldTime,
   holdTime,
@@ -185,13 +186,16 @@ function loadError(e: unknown): string {
   return "Could not load the details. Try again.";
 }
 
-/** The input as pretty JSON text; text that is not JSON stays as it is. */
-function prettyJson(text: string): string {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
+/** The input as pretty JSON text. The spec sends a JSON value; JSON text (a string) is parsed first, other text stays as it is. */
+function prettyJson(input: unknown): string {
+  if (typeof input === "string") {
+    try {
+      return JSON.stringify(JSON.parse(input), null, 2);
+    } catch {
+      return input;
+    }
   }
+  return JSON.stringify(input, null, 2) ?? String(input);
 }
 
 /** Mono JSON text in a scrolling block; the block is a labelled region the keyboard can reach. */
@@ -204,10 +208,34 @@ function JsonBlock({ label, text }: { label: string; text: string }) {
   );
 }
 
+/** The sentence for an input that is not shown; an unknown state reads as "not kept". */
+function notKeptText(state: string, own: HoldDetailsProps["inputStateText"]): ReactNode {
+  const key = (Object.hasOwn(INPUT_STATE_TEXT, state) ? state : "none") as keyof typeof INPUT_STATE_TEXT;
+  return own?.[key] ?? INPUT_STATE_TEXT[key];
+}
+
 /** The record of `tb.hold_details` (C369 D4), under the same name as the modal: `import { HoldDetails }` gives both. */
 export type HoldDetails = HoldDetailsRecord;
 
 export const INPUT_NOT_KEPT = "Not kept (inputs are kept 7 days after the decision)";
+
+/** What the modal says when there is no input to show, per `inputState` (C369 D4; 7 days after the decision, C369). */
+export const INPUT_STATE_TEXT: Readonly<Record<Exclude<HoldInputState, "kept">, string>> = {
+  too_large: "Too large to keep",
+  wiped: "Removed 7 days after the decision",
+  unreadable: "Kept, but it could not be read",
+  none: INPUT_NOT_KEPT,
+};
+
+const STATUS_TEXT: Record<string, string> = {
+  held: "Waiting for you",
+  approved: "Approved",
+  run: "Ran",
+  denied: "Denied",
+  refused: "Refused",
+  failed: "Failed",
+  after_failed: "Ran, then a follow-up step failed",
+};
 
 export type HoldDetailsProps = Pick<TimeOptions, "timeZone" | "locale"> & {
   open: boolean;
@@ -217,22 +245,23 @@ export type HoldDetailsProps = Pick<TimeOptions, "timeZone" | "locale"> & {
   load: (holdId: string) => Promise<HoldDetailsRecord>;
   /** dialog title (e.g. the hold summary); default "More details" */
   title?: ReactNode;
-  /** the sentence when `input` is null */
-  notKept?: ReactNode;
+  /** your own words per input state (default INPUT_STATE_TEXT) */
+  inputStateText?: Partial<Record<Exclude<HoldInputState, "kept">, ReactNode>>;
 };
 
 /** "<local> · <UTC ISO>" */
-const stamp = (ms: number | null | undefined, o: TimeOptions): string | null => {
-  const t = holdTime(ms, o);
+const stamp = (at: number | string | null | undefined, o: TimeOptions): string | null => {
+  const t = holdTime(at, o);
   return t ? `${t.absolute} · ${t.iso}` : null;
 };
 
 /**
  * "More details" of a hold (C369 D4): a large modal (kicker "Technical details") with the technical facts of the held call
- * from `tb.hold_details` (owner only) and its input as formatted JSON when it is still kept. Loading, error (with Try
- * again) and "not kept" states. All values are shown as text.
+ * from `tb.hold_details` (owner only) and its input as formatted JSON while it is kept; otherwise the input state in words
+ * (too large, removed 7 days after the decision, unreadable, not kept). Loading and error (with Try again) states. All
+ * values are shown as text.
  */
-export function HoldDetails({ open, onClose, holdId, load, title = "More details", notKept = INPUT_NOT_KEPT, timeZone, locale }: HoldDetailsProps) {
+export function HoldDetails({ open, onClose, holdId, load, title = "More details", inputStateText, timeZone, locale }: HoldDetailsProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   // the latest loader without re-loading on every parent render (an inline arrow is a new function each time)
@@ -257,7 +286,8 @@ export function HoldDetails({ open, onClose, holdId, load, title = "More details
   const fam = d ? familyText(d.family) : null;
   const rows: [string, string | null | undefined][] = d
     ? [
-        ["Operation", d.opTitle ? `${visibleText(d.opTitle)} (${d.op})` : d.op],
+        ["Status", STATUS_TEXT[d.status] ?? humanizeId(d.status)],
+        ["Operation", d.opTitle && d.opTitle !== d.op ? `${visibleText(d.opTitle)} (${d.op})` : d.op],
         ["Tool", d.tool],
         ["Held calls of", fam ? `${fam.label} (${d.family})` : null],
         ["Reason", d.reason ? visibleText(d.reason) : null],
@@ -268,7 +298,9 @@ export function HoldDetails({ open, onClose, holdId, load, title = "More details
         ["Call id", d.callId],
         ["Created", stamp(d.createdAt, o)],
         ["Expires", stamp(d.expiresAt, o)],
+        ["Decided", stamp(d.decidedAt, o)],
         ["Input digest", d.inputDigest],
+        ["Input kept until", d.inputState === "kept" ? stamp(d.inputWipeAt, o) : null],
         ["View hash", d.viewSha256],
       ]
     : [];
@@ -298,13 +330,11 @@ export function HoldDetails({ open, onClose, holdId, load, title = "More details
               ))}
           </dl>
           <h3 className="tb-hold-input-head">Input</h3>
-          {d.input === null ? <p className="tb-hold-not-kept">{notKept}</p> : <JsonBlock label="Input as JSON" text={prettyJson(d.input)} />}
-          {d.extra !== undefined && d.extra !== null ? (
-            <>
-              <h3 className="tb-hold-input-head">App details</h3>
-              <JsonBlock label="App details as JSON" text={JSON.stringify(d.extra, null, 2)} />
-            </>
-          ) : null}
+          {d.inputState === "kept" && d.input !== null && d.input !== undefined ? (
+            <JsonBlock label="Input as JSON" text={prettyJson(d.input)} />
+          ) : (
+            <p className="tb-hold-not-kept">{notKeptText(d.inputState === "kept" ? "none" : d.inputState, inputStateText)}</p>
+          )}
         </div>
       ) : null}
     </Dialog>

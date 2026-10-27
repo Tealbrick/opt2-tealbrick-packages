@@ -17,7 +17,7 @@ export {
 } from "./components/button.tsx";
 export { Dialog, type DialogProps } from "./components/dialog.tsx";
 export { Field, type FieldInfo, fieldAria, NativeSelect, type SelectOption, Textarea, TextInput, useField } from "./components/field.tsx";
-export { HoldCard, type HoldCardProps, HoldDetails, type HoldDetailsProps, HoldView, INPUT_NOT_KEPT } from "./components/hold-card.tsx";
+export { HoldCard, type HoldCardProps, HoldDetails, type HoldDetailsProps, HoldView, INPUT_NOT_KEPT, INPUT_STATE_TEXT } from "./components/hold-card.tsx";
 export { AppIcon, AppMark, appName, BrandMark, type IconSize, Lockup } from "./components/identity.tsx";
 export { ArrowIcon, CartIcon, CloseIcon, cx, Ink, inked, SearchIcon } from "./components/ink.tsx";
 export { Menu, PayPill, Tabs, Toast } from "./components/nav.tsx";
@@ -47,6 +47,7 @@ export {
   familyText,
   type HoldCaller,
   type HoldFamily,
+  type HoldInputState,
   type HoldReceipt,
   type HoldTime,
   holdTime,

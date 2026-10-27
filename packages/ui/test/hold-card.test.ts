@@ -3,6 +3,7 @@
     fallback, and text-only rendering (a view with markup stays text). */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { HoldDetails as HoldDetailsRecord, HoldReceipt } from "../src/index.ts";
 import { $, $$, act, click, h, mount, skip, ui, wait } from "./dom.ts";
 
 const NOW = Date.UTC(2026, 9, 27, 8, 5); // 2026-10-27 08:05 UTC = 09:05 in Prague (CET after 25 Oct)
@@ -257,8 +258,10 @@ test("HoldCard: Approve (primary) / Deny / More details, labelled, in order; bus
   await m.unmount();
 });
 
+const INPUT = { to: ["ana@example.com"], subject: "Thanks", body: "<b>hi</b>" };
 const details = (extra: Record<string, unknown> = {}) => ({
   holdId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
+  status: "held",
   op: "mail_send",
   opTitle: "Send email",
   tool: "GMAIL_SEND_EMAIL",
@@ -269,9 +272,12 @@ const details = (extra: Record<string, unknown> = {}) => ({
   callId: "cal_01HZX3K8Q2V4N6P8R0S2T4V6W9",
   receiptId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
   inputDigest: "sha256:abc",
-  input: '{"to":["ana@example.com"],"subject":"Thanks","body":"<b>hi</b>"}',
-  createdAt: Date.UTC(2026, 9, 27, 8, 0),
-  expiresAt: Date.UTC(2026, 9, 29, 8, 0),
+  input: INPUT,
+  inputState: "kept",
+  inputWipeAt: null,
+  createdAt: "2026-10-27T08:00:00.000Z",
+  expiresAt: "2026-10-29T08:00:00.000Z",
+  decidedAt: null,
   viewSha256: "sha256:def",
   ...extra,
 });
@@ -308,6 +314,7 @@ test("HoldDetails: loading → facts (local + UTC ISO) and the input as pretty J
   assert.equal(dlg.querySelector('[role="status"]'), null);
   const rows = Object.fromEntries($$(dlg, ".tb-hold-facts > div").map((d) => [$(d, "dt").textContent, $(d, "dd").textContent]));
   assert.deepEqual(rows, {
+    Status: "Waiting for you",
     Operation: "Send email (mail_send)",
     Tool: "GMAIL_SEND_EMAIL",
     "Held calls of": "Every message or post (outward)",
@@ -325,7 +332,7 @@ test("HoldDetails: loading → facts (local + UTC ISO) and the input as pretty J
   const input = $(dlg, "section.tb-hold-json");
   assert.equal(input.getAttribute("aria-label"), "Input as JSON");
   assert.equal(input.getAttribute("tabindex"), "0");
-  assert.equal($(input, "pre").textContent, JSON.stringify(JSON.parse(details().input), null, 2));
+  assert.equal($(input, "pre").textContent, JSON.stringify(INPUT, null, 2));
   assert.equal(input.querySelector("b"), null, "markup in the input stays text");
 
   // re-open loads again (fresh data), and a new loader identity on re-render does not reload
@@ -338,33 +345,69 @@ test("HoldDetails: loading → facts (local + UTC ISO) and the input as pretty J
   await m.unmount();
 });
 
-test("HoldDetails: input not kept, app caller, extra facts, missing optional fields", { skip }, async () => {
-  const { HoldDetails, INPUT_NOT_KEPT } = await ui();
-  const rec = details({
-    input: null,
+test("HoldDetails: every input state in words (7-day sentence), decided and kept-until rows, app caller, missing optional fields", { skip }, async () => {
+  const { HoldDetails, INPUT_NOT_KEPT, INPUT_STATE_TEXT } = await ui();
+  assert.equal(INPUT_NOT_KEPT, "Not kept (inputs are kept 7 days after the decision)");
+  assert.deepEqual(INPUT_STATE_TEXT, {
+    too_large: "Too large to keep",
+    wiped: "Removed 7 days after the decision",
+    unreadable: "Kept, but it could not be read",
+    none: INPUT_NOT_KEPT,
+  });
+  const base = details({
+    status: "approved",
     tool: undefined,
     reason: undefined,
-    heldBy: null,
+    heldBy: undefined,
     callId: null,
+    viewSha256: null,
     caller: { type: "app", id: "ins_evo", name: "Evolving Workflows", product: "evolution" },
-    extra: { upstream: "gmail", method: "POST" },
+    decidedAt: "2026-10-27T09:30:00.000Z",
   });
+  const cases: [Record<string, unknown>, string][] = [
+    [{ input: null, inputState: "too_large" }, "Too large to keep"],
+    [{ input: null, inputState: "wiped" }, "Removed 7 days after the decision"],
+    [{ input: null, inputState: "unreadable" }, "Kept, but it could not be read"],
+    [{ input: null, inputState: "none" }, INPUT_NOT_KEPT],
+    [{ input: null, inputState: "kept" }, INPUT_NOT_KEPT],
+    [{ input: null, inputState: "future_state" }, INPUT_NOT_KEPT],
+  ];
+  for (const [state, words] of cases) {
+    const rec = { ...base, ...state };
+    const m = await mount(h(HoldDetails, { open: true, holdId: rec.holdId, load: async () => rec, onClose: () => {}, timeZone: "UTC", locale: "en-GB" }));
+    await wait(1);
+    const dlg = $(m.root, "dialog");
+    assert.equal($(dlg, ".tb-hold-not-kept").textContent, words, String(state.inputState));
+    assert.equal(dlg.querySelector("section.tb-hold-json"), null);
+    await m.unmount();
+  }
+  // own words for a state
+  const own = await mount(
+    h(HoldDetails, {
+      open: true,
+      holdId: base.holdId,
+      load: async () => ({ ...base, input: null, inputState: "wiped" }),
+      onClose: () => {},
+      inputStateText: { wiped: "Gone." },
+    }),
+  );
+  await wait(1);
+  assert.equal($(own.root, ".tb-hold-not-kept").textContent, "Gone.");
+  await own.unmount();
+
+  // kept after the decision: the input and when it goes
+  const rec = { ...base, inputWipeAt: "2026-11-03T09:30:00.000Z" };
   const m = await mount(h(HoldDetails, { open: true, holdId: rec.holdId, load: async () => rec, onClose: () => {}, timeZone: "UTC", locale: "en-GB" }));
   await wait(1);
   const dlg = $(m.root, "dialog");
   assert.equal($(dlg, "h2").textContent, "More details");
-  assert.equal($(dlg, ".tb-hold-not-kept").textContent, INPUT_NOT_KEPT);
-  assert.equal(INPUT_NOT_KEPT, "Not kept (inputs are kept 7 days after the decision)");
-  const keys = $$(dlg, ".tb-hold-facts dt").map((d) => d.textContent);
-  assert.ok(!keys.includes("Tool") && !keys.includes("Reason") && !keys.includes("Held by") && !keys.includes("Call id"));
-  const app = $$(dlg, ".tb-hold-facts > div").find((d) => $(d, "dt").textContent === "App");
-  assert.equal(app && $(app, "dd").textContent, "Evolving Workflows (ins_evo, evolution)");
-  const blocks = $$(dlg, "section.tb-hold-json");
-  assert.deepEqual(
-    blocks.map((b) => b.getAttribute("aria-label")),
-    ["App details as JSON"],
-  );
-  assert.equal($(blocks[0] as HTMLElement, "pre").textContent, JSON.stringify({ upstream: "gmail", method: "POST" }, null, 2));
+  const rows = Object.fromEntries($$(dlg, ".tb-hold-facts > div").map((d) => [$(d, "dt").textContent, $(d, "dd").textContent]));
+  assert.equal(rows.Status, "Approved");
+  assert.equal(rows.App, "Evolving Workflows (ins_evo, evolution)");
+  assert.equal(rows.Decided, "27 Oct 2026, 09:30 UTC · 2026-10-27T09:30:00.000Z");
+  assert.equal(rows["Input kept until"], "3 Nov 2026, 09:30 UTC · 2026-11-03T09:30:00.000Z");
+  for (const k of ["Tool", "Reason", "Held by", "Call id", "View hash"]) assert.ok(!(k in rows), `${k}: absent value, no row`);
+  assert.equal($(dlg, "section.tb-hold-json pre").textContent, JSON.stringify(INPUT, null, 2));
   await m.unmount();
 });
 
@@ -397,3 +440,49 @@ test("HoldDetails: a failed load shows a plain message (alert) and Try again loa
   assert.equal(n, 4);
   await m.unmount();
 });
+
+// Type level (checked by `pnpm typecheck`): the SDK's own shapes (spec 0.1.84: template-literal ids, unions, ISO times,
+// `input: Json | null`) are assignable to the kit's local types as they are.
+type SpecHoldDetails = {
+  holdId: `hld_${string}`;
+  receiptId: `hld_${string}`;
+  status: "run" | "held" | "approved" | "denied" | "refused" | "failed" | "after_failed";
+  op: string;
+  opTitle: string;
+  tool?: string;
+  family: "first_contact" | "money" | "caps" | "policy";
+  reason?: string;
+  heldBy?: string;
+  caller: { type: "agent" | "app"; id: `agt_${string}` | `ins_${string}`; name: string; product?: string };
+  callId: `cal_${string}` | null;
+  inputDigest: `sha256:${string}`;
+  input: { [k: string]: unknown } | string | number | boolean | null | unknown[];
+  inputState: "kept" | "too_large" | "wiped" | "unreadable" | "none";
+  inputWipeAt: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  decidedAt: string | null;
+  viewSha256: string | null;
+};
+type SpecReceipt = {
+  id: `hld_${string}` | `rcp_${string}`;
+  callId: `cal_${string}` | null;
+  caller: { type: "agent" | "app"; id: `agt_${string}`; name: string; product?: string };
+  op: string;
+  effect: "read" | "write";
+  holdFamily: "destructive" | "caps" | "policy" | null;
+  heldBy: string | null;
+  status: "held" | "approved";
+  inputDigest: `sha256:${string}`;
+  summary: string;
+  meta: unknown;
+  idempotencyKey: string | null;
+  view?: string;
+  holdReason?: string;
+  createdAt: number;
+  decidedAt: number | null;
+  expiresAt: number | null;
+  decidedBy: string | null;
+};
+export const specDetailsFit = (d: SpecHoldDetails): HoldDetailsRecord => d;
+export const specReceiptFits = (r: SpecReceipt): HoldReceipt => r;

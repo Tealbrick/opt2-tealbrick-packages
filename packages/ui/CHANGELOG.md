@@ -1,5 +1,28 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.4.0 (reservation, C369 H3)
+
+Hold cards in plain words for every app (C369). New API only; nothing changes for current users.
+- `HoldCard`: one held call. Summary as the heading, "Asked by <agent or app>", the hold view as readable text lines
+  (line breaks and indents kept, long lines wrap, the kit font, not a mono JSON box; plain text only, never HTML), "Why
+  held" (family label + sentence, the hold reason, the rule that held it), asked / expires times in the viewer's zone
+  (relative + absolute, UTC in the tooltip), then Approve (primary) / Deny / More details. Props: `hold` (an SDK `Receipt`
+  fits), `onApprove`, `onDeny`, `busy` (C8), `onDetails`, `actions` (replaces the buttons), `headingLevel`, and `now` /
+  `timeZone` / `locale` for tests. A decided hold shows its status instead of the buttons.
+- `HoldDetails`: the "More details" modal (Dialog `lg`, kicker "Technical details"). `load(holdId)` returns the record of
+  the owner-only person op `tb.hold_details` (spec 0.1.84). It shows status, operation, tool, family, reason, held by,
+  caller, hold / receipt / call ids, created / expires / decided (local + UTC ISO), input digest, view hash and, while the
+  input is kept, the input as pretty JSON in a scrolling block. Otherwise one sentence per `inputState` (`INPUT_STATE_TEXT`):
+  "Too large to keep", "Removed 7 days after the decision", "Kept, but it could not be read", "Not kept (inputs are kept 7
+  days after the decision)". Loading and error states (plain message + Try again; never the raw error).
+- `familyText(family)` / `FAMILY_TEXT`: the plain words of the hold families, moved from the Portal GUI
+  (`src/core/hold-families.ts`), plus `policy` ("A rule you set") and `caps` ("Usage limit reached"). Unknown id →
+  humanized id; no family → "Approval needed".
+- Helpers: `holdTime` (Intl, ms or ISO), `viewLines`, `visibleText` (drops controls, bidi and zero-width characters
+  for display), `humanizeId`. Local types with the spec's field names, a little wider so the SDK's types fit as they are:
+  `HoldReceipt`, `HoldDetails` (same name as the modal), `HoldCaller`, `HoldFamily`, `HoldInputState`.
+- Gallery views `holds` and `hold-details`, both in the rendered check (contrast, ink, scrollbars, 1280 + 375, light + dark).
+
 ## 0.3.0 (2026-10-17)
 
 Found in Live Artifacts S5 (mini-apps lead). One breaking rename, with its migration note.

@@ -713,16 +713,14 @@ const GALLERY_DETAILS: HoldDetailsRecord = {
   callId: "cal_01HZX3K8Q2V4N6P8R0S2T4V6WA",
   receiptId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
   inputDigest: "sha256:4f1c0d3b2a9e8f7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a3928170615",
-  input: JSON.stringify({
-    to: ["ana.novak@example.com"],
-    subject: "Thanks for the call",
-    body: "Hello Ana, thanks for the call today.",
-    attachments: ["price-list-2027.pdf"],
-  }),
-  createdAt: HOLD_NOW - 5 * 60_000,
-  expiresAt: HOLD_NOW + 2 * 86_400_000,
+  status: "held",
+  input: { to: ["ana.novak@example.com"], subject: "Thanks for the call", body: "Hello Ana, thanks for the call today.", attachments: ["price-list-2027.pdf"] },
+  inputState: "kept",
+  inputWipeAt: null,
+  createdAt: new Date(HOLD_NOW - 5 * 60_000).toISOString(),
+  expiresAt: new Date(HOLD_NOW + 2 * 86_400_000).toISOString(),
+  decidedAt: null,
   viewSha256: "sha256:9a8b7c6d5e4f30211203f4e5d6c7b8a99a8b7c6d5e4f30211203f4e5d6c7b8a9",
-  extra: { upstream: "gmail", method: "POST", path: "/gmail/v1/users/me/messages/send" },
 };
 
 function HoldsView() {
