@@ -3,7 +3,6 @@
     fallback, and text-only rendering (a view with markup stays text). */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { HoldDetails as HoldDetailsRecord, HoldReceipt } from "../src/index.ts";
 import { $, $$, act, click, h, mount, skip, ui, wait } from "./dom.ts";
 
 const NOW = Date.UTC(2026, 9, 27, 8, 5); // 2026-10-27 08:05 UTC = 09:05 in Prague (CET after 25 Oct)
@@ -87,6 +86,30 @@ test("humanizeId, viewLines and visibleText", { skip }, async () => {
   const zwsp = String.fromCodePoint(0x200b);
   const bel = String.fromCodePoint(0x07);
   assert.equal(visibleText(`pay${rlo}evil${zwsp}${bel} ok\tyes`), "payevil ok\tyes");
+  // QA-UI17-2: the SDK clean() list + display-only blanks; emoji variation selectors stay
+  const hidden = [
+    0x00ad, 0x034f, 0x061c, 0x115f, 0x1160, 0x180b, 0x180e, 0x200c, 0x200d, 0x2028, 0x2029, 0x2061, 0x2064, 0x2800, 0x3164, 0xffa0, 0xfff9, 0xfffb, 0xe0001,
+    0xe0041, 0xe007f, 0xd800,
+  ];
+  for (const c of hidden) assert.equal(visibleText(`ana@exam${String.fromCodePoint(c)}ple.com`), "ana@example.com", c.toString(16));
+  const heart = `${String.fromCodePoint(0x2764)}${String.fromCodePoint(0xfe0f)}`;
+  assert.equal(visibleText(heart), heart);
+});
+
+test("viewLines: a run of blank lines shows as ONE blank line (QA-UI17-1 repro: 1,500 blank lines)", { skip }, async () => {
+  const { viewLines } = await ui();
+  const view = `Send an email\nTo: ana@example.com\n${"\n".repeat(1500)}LAST LINE`;
+  assert.deepEqual(viewLines(view), [
+    { text: "Send an email", indent: 0 },
+    { text: "To: ana@example.com", indent: 0 },
+    { text: "", indent: 0 },
+    { text: "LAST LINE", indent: 0 },
+  ]);
+  assert.deepEqual(
+    viewLines("a\n   \n\t\n\nb\n\n").map((l) => l.text),
+    ["a", "", "b", ""],
+    "whitespace-only lines are blank too",
+  );
 });
 
 test("holdTime: Intl in the given zone, relative + absolute + UTC; invalid → null", { skip }, async () => {
@@ -97,11 +120,32 @@ test("holdTime: Intl in the given zone, relative + absolute + UTC; invalid → n
     utc: "27 Oct 2026, 08:00 UTC",
     iso: "2026-10-27T08:00:00.000Z",
   });
-  assert.equal(holdTime(Date.UTC(2026, 9, 29, 8, 0), TZ)?.relative, "in 2 days");
-  assert.equal(holdTime(NOW + 20_000, TZ)?.relative, "now");
+  assert.equal(holdTime(Date.UTC(2026, 9, 29, 8, 0), TZ)?.relative, "in 47 hours");
+  assert.equal(holdTime(NOW + 20_000, TZ)?.relative, "in under a minute");
+  assert.equal(holdTime("2026-10-27T08:00:00.000Z", TZ)?.absolute, "27 Oct 2026, 09:00 CET", "ISO strings too");
   assert.equal(holdTime(Date.UTC(2026, 9, 29, 8, 0), { ...TZ, timeZone: "America/New_York", locale: "en-US" })?.absolute, "Oct 29, 2026, 04:00 AM EDT");
   assert.equal(holdTime(null, TZ), null);
   assert.equal(holdTime(Number.NaN, TZ), null);
+});
+
+test("relativeTime: sizes rounded down both ways (never more time left than there is), hours up to 48 h", { skip }, async () => {
+  const { relativeTime } = await ui();
+  const H = 3_600_000;
+  const cases: [number, string][] = [
+    [36 * H, "in 36 hours"],
+    [23.6 * H, "in 23 hours"],
+    [1.5 * H, "in 1 hour"],
+    [-1.5 * H, "1 hour ago"],
+    [59_000, "in under a minute"],
+    [-30_000, "under a minute ago"],
+    [0, "in under a minute"],
+    [90_000, "in 1 minute"],
+    [-90_000, "1 minute ago"],
+    [49 * H, "in 2 days"],
+    [-49 * H, "2 days ago"],
+    [79 * H, "in 3 days"],
+  ];
+  for (const [diff, words] of cases) assert.equal(relativeTime(diff, "en-GB"), words, String(diff));
 });
 
 test("HoldCard: summary heading, who asked, view as text lines, why held, times; no raw JSON or ids", { skip }, async () => {
@@ -111,13 +155,17 @@ test("HoldCard: summary heading, who asked, view as text lines, why held, times;
   const head = $(card, "h3");
   assert.equal(head.textContent, "Email to ana@example.com: Thanks for the call");
   assert.equal(card.getAttribute("aria-labelledby"), head.id);
-  assert.equal($(card, ".tb-hold-by").textContent, "Asked by Front desk · , Send email");
+  assert.equal($(card, ".tb-hold-by").textContent, "Asked by Front desk·, Send email");
+  assert.equal(card.querySelector(".tb-hold-by .tb-tag"), null, "an agent gets no kind tag");
   assert.equal($(card, ".tb-hold-by strong").textContent, "Front desk");
 
   // the view: one element per line, indents as --indent, blank line kept, not a <pre> / mono box
   assert.equal(card.querySelector("pre"), null);
   const view = $(card, "section.tb-hold-view");
-  assert.equal(view.getAttribute("aria-label"), "What would run");
+  const caption = $(card, ".tb-hold-caption");
+  assert.equal(caption.textContent, "What the agent asks");
+  assert.equal(view.getAttribute("aria-labelledby"), caption.id);
+  assert.equal(card.querySelector(".tb-hold-more"), null, "no overflow: no cue");
   assert.equal(view.getAttribute("tabindex"), "0", "a scrolling view is reachable by keyboard");
   const lines = $$(view, ".tb-hold-line");
   assert.deepEqual(
@@ -138,7 +186,7 @@ test("HoldCard: summary heading, who asked, view as text lines, why held, times;
   const times = $$(card, ".tb-hold-facts > div").map((d) => [$(d, "dt").textContent, $(d, "dd").textContent]);
   assert.deepEqual(times, [
     ["Asked", "5 minutes ago (27 Oct 2026, 09:00 CET)"],
-    ["Expires", "in 2 days (29 Oct 2026, 09:00 CET)"],
+    ["Expires", "in 47 hours (29 Oct 2026, 09:00 CET)"],
   ]);
   const asked = $(card, ".tb-hold-facts time");
   assert.equal(asked.getAttribute("datetime"), "2026-10-27T08:00:00.000Z");
@@ -179,12 +227,20 @@ test("HoldCard: reason and the rule that held it; app caller; unknown family fal
   );
   const why = $(m.root, ".tb-hold-why");
   assert.match(why.textContent ?? "", /A rule you set\./);
-  assert.equal($(why, ".tb-hold-reason").textContent, "Mail to new customers waits for Martin.");
-  assert.equal($(why, ".tb-hold-rule").textContent, "Held by Rules & Approvals (rules_gate)");
-  assert.equal($(m.root, ".tb-hold-by strong").textContent, "Evolving Workflows (app)");
+  assert.equal($(why, ".tb-hold-reason").textContent, "Rule: Mail to new customers waits for Martin.");
+  assert.equal($(why, ".tb-hold-rule").textContent, "Rule from Rules & Approvals (rules_gate)");
+  assert.equal($(m.root, ".tb-hold-by strong").textContent, "Evolving Workflows", "the name only");
+  assert.equal($(m.root, ".tb-hold-by .tb-tag").textContent, "App", "the caller kind is a Tag, not text after the name");
+  assert.equal($(m.root, ".tb-hold-caption").textContent, "What the app asks");
   const exp = $$(m.root, ".tb-hold-facts > div")[1];
   assert.equal(exp && $(exp, "dt").textContent, "Expired");
   assert.equal(exp && $(exp, "dd").textContent, "3 minutes ago (27 Oct 2026, 09:02 CET)");
+
+  await m.rerender(h(HoldCard, { hold: hold({ holdReason: "caps_write", heldBy: null }), ...TZ }));
+  assert.equal($(m.root, ".tb-hold-reason").textContent, "Reason: caps_write", "no rule: a plain reason");
+  assert.equal(m.root.querySelector(".tb-hold-rule"), null);
+  await m.rerender(h(HoldCard, { hold: hold({ heldBy: "rules/rules_gate" }), ...TZ }));
+  assert.equal($(m.root, ".tb-hold-rule").textContent, "Held by Rules & Approvals (rules_gate)");
 
   await m.rerender(h(HoldCard, { hold: hold({ holdFamily: "night_call", expiresAt: null, view: undefined }), ...TZ }));
   assert.match($(m.root, ".tb-hold-why").textContent ?? "", /Night call\. Calls of this kind wait for your approval\./);
@@ -201,7 +257,7 @@ test("HoldCard: XSS — markup in the view, summary and reason renders as text, 
   assert.equal(card.querySelector("img, script"), null);
   assert.equal($$(card, ".tb-hold-line")[1]?.textContent, evil);
   assert.equal($(card, "h3").textContent, evil);
-  assert.equal($(card, ".tb-hold-reason").textContent, evil);
+  assert.equal($(card, ".tb-hold-reason").textContent, `Reason: ${evil}`);
   await wait(5);
   assert.equal((globalThis as Record<string, unknown>).__pwned, undefined);
   await m.unmount();
@@ -230,8 +286,14 @@ test("HoldCard: Approve (primary) / Deny / More details, labelled, in order; bus
   assert.ok(buttons[0]?.classList.contains("primary"));
   assert.ok(!buttons[1]?.classList.contains("primary"));
   assert.equal(buttons[2]?.getAttribute("aria-haspopup"), "dialog");
-  for (const b of buttons) await click(b);
-  assert.deepEqual(calls, ["approve", "deny", "details"]);
+  await click(buttons[0] as HTMLElement);
+  await click(buttons[2] as HTMLElement);
+  assert.deepEqual(calls, ["approve", "details"]);
+  await click(buttons[1] as HTMLElement);
+  assert.deepEqual(calls, ["approve", "details"], "a second decision right after the first is ignored (C8 double click)");
+  await wait(550);
+  await click(buttons[1] as HTMLElement);
+  assert.deepEqual(calls, ["approve", "details", "deny"], "the parent never set busy: the card takes a decision again after 0.5 s");
 
   await m.rerender(h(HoldCard, { ...props, busy: true }));
   const busy = $$(m.root, ".tb-hold-actions button");
@@ -244,6 +306,26 @@ test("HoldCard: Approve (primary) / Deny / More details, labelled, in order; bus
   assert.equal($(m.root, ".tb-hold-actions .tb-tag").textContent, "Approved");
   assert.equal(buttonByText(m.root, "Approve"), undefined, "a decided hold has no Approve / Deny");
   assert.ok(buttonByText(m.root, "More details"));
+  for (const [status, label] of [
+    ["weird_state", "Weird state"],
+    ["constructor", "Constructor"],
+    ["__proto__", "Proto"],
+  ]) {
+    await m.rerender(h(HoldCard, { ...props, hold: hold({ status }) }));
+    assert.equal($(m.root, ".tb-hold-actions .tb-tag").textContent, label, status);
+    assert.equal(buttonByText(m.root, "Approve"), undefined, `${status}: only "held" gets Approve / Deny`);
+  }
+  // expired while held: Approve / Deny disabled next to an "Expired" tag
+  await m.rerender(h(HoldCard, { ...props, hold: hold({ expiresAt: NOW - 1 }) }));
+  assert.equal($(m.root, ".tb-hold-actions .tb-tag").textContent, "Expired");
+  assert.deepEqual(
+    $$(m.root, ".tb-hold-actions button").map((b) => [b.textContent, (b as HTMLButtonElement).disabled]),
+    [
+      ["Approve", true],
+      ["Deny", true],
+      ["More details", false],
+    ],
+  );
 
   await m.rerender(h(HoldCard, { ...props, actions: h("button", { type: "button" }, "Open in Connect") }));
   assert.deepEqual(
@@ -256,6 +338,111 @@ test("HoldCard: Approve (primary) / Deny / More details, labelled, in order; bus
   assert.equal($(m.root, ".tb-hold-why h3").textContent, "Why held");
   assert.equal($$(m.root, ".tb-hold-actions button").length, 0, "no handlers: no buttons");
   await m.unmount();
+});
+
+test("HoldCard: keyboard focus stays on the card while the decision runs, and comes back after", { skip }, async () => {
+  const { HoldCard } = await ui();
+  let busy = false;
+  const host: { m?: Awaited<ReturnType<typeof mount>> } = {};
+  const render = () => h(HoldCard, { hold: hold(), ...TZ, busy, onApprove: () => void 0, onDeny: () => void 0 });
+  host.m = await mount(render());
+  const m = host.m;
+  const approve = buttonByText(m.root, "Approve") as HTMLButtonElement;
+  approve.focus();
+  assert.equal(document.activeElement, approve);
+  await click(approve);
+  busy = true;
+  await m.rerender(render());
+  const status = $(m.root, ".tb-hold-busy");
+  assert.equal(status.getAttribute("role"), "status");
+  assert.equal(status.textContent, "Sending your decision…");
+  assert.equal(document.activeElement, status, "focus moved to the card's status line, not <body>");
+  busy = false;
+  await m.rerender(render());
+  assert.equal(m.root.querySelector(".tb-hold-busy"), null);
+  assert.equal(document.activeElement, buttonByText(m.root, "Approve"), "focus back on Approve when the hold is still there");
+  await m.unmount();
+});
+
+test("HoldCard: caps agent text (summary 280, name 120 code points) with the full text in title", { skip }, async () => {
+  const { HoldCard, HOLD_TEXT_MAX } = await ui();
+  assert.deepEqual({ ...HOLD_TEXT_MAX }, { summary: 280, name: 120, action: 120, reason: 280 });
+  const longSummary = "S".repeat(3000);
+  const longName = `${"N".repeat(499)}${String.fromCodePoint(0x1f600)}`;
+  const m = await mount(
+    h(HoldCard, { hold: hold({ summary: longSummary, caller: { type: "agent", id: "agt_x", name: longName } }), ...TZ, onApprove: () => {} }),
+  );
+  const head = $(m.root, "h3");
+  assert.equal(Array.from(head.textContent ?? "").length, 280);
+  assert.ok(head.textContent?.endsWith("…"));
+  assert.equal(head.getAttribute("title"), longSummary);
+  const name = $(m.root, ".tb-hold-by strong");
+  assert.equal(Array.from(name.textContent ?? "").length, 120);
+  assert.equal(name.getAttribute("title"), longName);
+  assert.ok((buttonByText(m.root, "Approve")?.getAttribute("aria-label")?.length ?? 0) < 300, "labels use the capped name");
+  await m.rerender(h(HoldCard, { hold: hold(), ...TZ }));
+  assert.equal($(m.root, "h3").getAttribute("title"), null, "short text: no title");
+  await m.unmount();
+});
+
+test("HoldView: a view taller than its box shows the fade and 'N more lines — scroll to read all', described for screen readers", { skip }, async () => {
+  const { HoldView } = await ui();
+  // happy-dom has no layout: give the box 3 lines of 24px, each line 24px tall, at offsetTop = index * 24
+  const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+  const saved = ["scrollHeight", "clientHeight", "offsetTop", "offsetHeight"].map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const);
+  const isView = (el: HTMLElement) => el.classList.contains("tb-hold-view");
+  const lineIndex = (el: HTMLElement) => (el.parentElement ? Array.from(el.parentElement.children).indexOf(el) : 0);
+  Object.defineProperty(proto, "scrollHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return isView(this) ? this.children.length * 24 : 0;
+    },
+  });
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return isView(this) ? 72 : 0;
+    },
+  });
+  Object.defineProperty(proto, "offsetTop", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.classList.contains("tb-hold-line") ? lineIndex(this) * 24 : 0;
+    },
+  });
+  Object.defineProperty(proto, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.classList.contains("tb-hold-line") ? 24 : 0;
+    },
+  });
+  try {
+    const m = await mount(h(HoldView, { view: ["one", "two", "three", "four", "five", "six", "", "", "", "LAST"].join("\n") }));
+    const box = $(m.root, "section.tb-hold-view");
+    assert.equal($$(box, ".tb-hold-line").length, 8, "blank run collapsed: 6 lines + 1 blank + LAST");
+    assert.ok($(m.root, ".tb-hold-view-frame").classList.contains("is-more"), "fade on");
+    const more = $(m.root, ".tb-hold-more");
+    assert.equal(more.textContent, "5 more lines — scroll to read all");
+    assert.equal(box.getAttribute("aria-describedby"), more.id);
+    await act(async () => {
+      box.scrollTop = 72;
+      box.dispatchEvent(new Event("scroll"));
+    });
+    assert.equal($(m.root, ".tb-hold-more").textContent, "2 more lines — scroll to read all");
+    await act(async () => {
+      box.scrollTop = 120;
+      box.dispatchEvent(new Event("scroll"));
+    });
+    assert.equal(m.root.querySelector(".tb-hold-more"), null, "at the bottom: no cue");
+    assert.ok(!$(m.root, ".tb-hold-view-frame").classList.contains("is-more"));
+    assert.equal(box.getAttribute("aria-describedby"), null);
+    await m.unmount();
+  } finally {
+    for (const [k, d] of saved) {
+      if (d) Object.defineProperty(proto, k, d);
+      else delete proto[k];
+    }
+  }
 });
 
 const INPUT = { to: ["ana@example.com"], subject: "Thanks", body: "<b>hi</b>" };
@@ -441,48 +628,82 @@ test("HoldDetails: a failed load shows a plain message (alert) and Try again loa
   await m.unmount();
 });
 
-// Type level (checked by `pnpm typecheck`): the SDK's own shapes (spec 0.1.84: template-literal ids, unions, ISO times,
-// `input: Json | null`) are assignable to the kit's local types as they are.
-type SpecHoldDetails = {
-  holdId: `hld_${string}`;
-  receiptId: `hld_${string}`;
-  status: "run" | "held" | "approved" | "denied" | "refused" | "failed" | "after_failed";
-  op: string;
-  opTitle: string;
-  tool?: string;
-  family: "first_contact" | "money" | "caps" | "policy";
-  reason?: string;
-  heldBy?: string;
-  caller: { type: "agent" | "app"; id: `agt_${string}` | `ins_${string}`; name: string; product?: string };
-  callId: `cal_${string}` | null;
-  inputDigest: `sha256:${string}`;
-  input: { [k: string]: unknown } | string | number | boolean | null | unknown[];
-  inputState: "kept" | "too_large" | "wiped" | "unreadable" | "none";
-  inputWipeAt: string | null;
-  createdAt: string;
-  expiresAt: string | null;
-  decidedAt: string | null;
-  viewSha256: string | null;
-};
-type SpecReceipt = {
-  id: `hld_${string}` | `rcp_${string}`;
-  callId: `cal_${string}` | null;
-  caller: { type: "agent" | "app"; id: `agt_${string}`; name: string; product?: string };
-  op: string;
-  effect: "read" | "write";
-  holdFamily: "destructive" | "caps" | "policy" | null;
-  heldBy: string | null;
-  status: "held" | "approved";
-  inputDigest: `sha256:${string}`;
-  summary: string;
-  meta: unknown;
-  idempotencyKey: string | null;
-  view?: string;
-  holdReason?: string;
-  createdAt: number;
-  decidedAt: number | null;
-  expiresAt: number | null;
-  decidedBy: string | null;
-};
-export const specDetailsFit = (d: SpecHoldDetails): HoldDetailsRecord => d;
-export const specReceiptFits = (r: SpecReceipt): HoldReceipt => r;
+test("HoldDetails: hidden characters — rows drop them (bidi-isolated cells), the JSON shows them as escapes", { skip }, async () => {
+  const { HoldDetails } = await ui();
+  const rlo = String.fromCodePoint(0x202e);
+  const shy = String.fromCodePoint(0x00ad);
+  const rec = details({
+    tool: `T${rlo}OOL`,
+    op: `mail${shy}_send`,
+    opTitle: "",
+    caller: { type: "agent", id: `agt_${rlo}x`, name: `Front${rlo} desk`, product: `con${shy}nect` },
+    callId: `call_${rlo}1`,
+    input: { to: `ana@exam${shy}ple.com`, note: `a${rlo}b` },
+  });
+  const m = await mount(h(HoldDetails, { open: true, holdId: rec.holdId, load: async () => rec, onClose: () => {}, timeZone: "UTC" }));
+  await wait(1);
+  const dlg = $(m.root, "dialog");
+  const rows = Object.fromEntries($$(dlg, ".tb-hold-facts > div").map((d) => [$(d, "dt").textContent, $(d, "dd").textContent]));
+  assert.equal(rows.Tool, "TOOL");
+  assert.equal(rows.Operation, "mail_send");
+  assert.equal(rows.Agent, "Front desk (agt_x, connect)");
+  assert.equal(rows["Call id"], "call_1");
+  for (const dd of $$(dlg, ".tb-hold-facts dd")) assert.ok(dd.firstElementChild?.tagName === "BDI", "each value is isolated");
+  const json = $(dlg, "section.tb-hold-json pre").textContent ?? "";
+  const bs = String.fromCharCode(92);
+  assert.ok(json.includes(`ana@exam${bs}u00ADple.com`), json);
+  assert.ok(json.includes(`a${bs}u202Eb`), json);
+  assert.ok(!json.includes(rlo) && !json.includes(shy));
+  await m.unmount();
+});
+
+test("HoldDetails: an answer that is not a record, null, or a loader that throws at once → error state with Try again", { skip }, async () => {
+  const { HoldDetails } = await ui();
+  const answers: (() => unknown)[] = [
+    () => Promise.resolve({}),
+    () => Promise.resolve({ ok: true, result: details() }),
+    () => Promise.resolve(null),
+    () => Promise.resolve({ ...details(), caller: null }),
+    () => {
+      throw new Error("sync <boom>");
+    },
+    () => Promise.resolve(details()),
+  ];
+  let n = 0;
+  const load = () => (answers[n++] as () => Promise<never>)();
+  const m = await mount(h(HoldDetails, { open: true, holdId: "hld_1", load, onClose: () => {}, timeZone: "UTC" }));
+  const expect = [
+    "The details came back in a form this page cannot read. Try again.",
+    "The details came back in a form this page cannot read. Try again.",
+    "The details came back in a form this page cannot read. Try again.",
+    "The details came back in a form this page cannot read. Try again.",
+    "Could not load the details. Try again.",
+  ];
+  for (const words of expect) {
+    await wait(1);
+    assert.equal($(m.root, '[role="alert"]').textContent, words, `answer ${n}`);
+    assert.equal(m.root.querySelector(".tb-hold-facts"), null);
+    await click(buttonByText(m.root, "Try again") as HTMLElement);
+  }
+  await wait(1);
+  assert.ok($(m.root, ".tb-hold-facts"), "the sixth answer is a record");
+  await m.unmount();
+});
+
+test("HoldDetails: closing drops the record (the input does not stay in memory); re-opening shows loading, then fresh data", { skip }, async () => {
+  const { HoldDetails } = await ui();
+  let gate = deferred<ReturnType<typeof details>>();
+  const load = () => gate.promise;
+  const props = { holdId: "hld_1", load, onClose: () => {}, timeZone: "UTC" };
+  const m = await mount(h(HoldDetails, { ...props, open: true }));
+  await act(async () => gate.resolve(details()));
+  assert.ok($(m.root, "section.tb-hold-json"));
+  await m.rerender(h(HoldDetails, { ...props, open: false }));
+  gate = deferred();
+  await m.rerender(h(HoldDetails, { ...props, open: true }));
+  assert.equal($(m.root, '[role="status"]').textContent, "Loading the details…", "no old data on re-open");
+  assert.equal(m.root.querySelector("section.tb-hold-json"), null);
+  await act(async () => gate.resolve(details({ input: null, inputState: "wiped" })));
+  assert.equal($(m.root, ".tb-hold-not-kept").textContent, "Removed 7 days after the decision");
+  await m.unmount();
+});

@@ -40,7 +40,9 @@ import { HoldCard, HoldDetails } from "@opt2-tealbrick/ui";
 
 - The card shows the summary as the heading, who asked, the hold view as text lines (breaks and indents kept, long lines
   wrap, never HTML), why it waits (`familyText`, the hold reason, the rule that held it), and when it was asked and when it
-  expires in the viewer's time zone. It shows no raw op or family ids.
+  expires in the viewer's time zone. It shows no raw op or family ids. A run of blank lines shows as one; a view taller
+  than its box says "N more lines — scroll to read all". Approve / Deny exist only while the status is `held` and are
+  disabled after `expiresAt`.
 - The modal shows the technical facts (local time + UTC ISO), and the input as JSON while it is kept. Otherwise it says
   why the input is missing (`inputState`: too large, removed 7 days after the decision, unreadable, not kept).
 - `familyText(family)` and `FAMILY_TEXT` give the plain words of a hold family (the Portal GUI uses the same words).

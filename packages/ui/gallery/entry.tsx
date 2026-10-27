@@ -701,6 +701,30 @@ const GALLERY_HOLDS = [
     expiresAt: HOLD_NOW + 3_600_000,
   },
 ];
+GALLERY_HOLDS.push({
+  id: "hld_01HZX3K8Q2V4N6P8R0S2T4V6WB",
+  op: "post_publish",
+  opTitle: "Publish a post",
+  summary: "Postiz post, SCHEDULED, to LinkedIn, 2026-10-28 09:00 UTC",
+  view: [
+    "Publish a post",
+    "Account: Company page (LinkedIn)",
+    "Type: SCHEDULED (goes out at the time below)",
+    "When: 2026-10-28 09:00 UTC",
+    "Posts: 1",
+    "",
+    "Post [1 of 1]",
+    "  Channel: LinkedIn · Company page",
+    "  Text (plain text):",
+    ...Array.from({ length: 30 }, (_, i) => `    Line ${i + 1} of the post text, long enough to show how the card wraps a line that does not fit.`),
+  ].join("\n"),
+  holdFamily: "outward",
+  heldBy: null,
+  caller: { type: "agent", id: "agt_social", name: "Social desk" },
+  status: "held",
+  createdAt: HOLD_NOW - 2 * 60_000,
+  expiresAt: HOLD_NOW + 30 * 60_000,
+} as (typeof GALLERY_HOLDS)[number]);
 const GALLERY_DETAILS: HoldDetailsRecord = {
   holdId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
   op: "mail_send",

@@ -18,10 +18,31 @@ Hold cards in plain words for every app (C369). New API only; nothing changes fo
 - `familyText(family)` / `FAMILY_TEXT`: the plain words of the hold families, moved from the Portal GUI
   (`src/core/hold-families.ts`), plus `policy` ("A rule you set") and `caps` ("Usage limit reached"). Unknown id →
   humanized id; no family → "Approval needed".
-- Helpers: `holdTime` (Intl, ms or ISO), `viewLines`, `visibleText` (drops controls, bidi and zero-width characters
-  for display), `humanizeId`. Local types with the spec's field names, a little wider so the SDK's types fit as they are:
+- Helpers: `holdTime` (Intl, ms or ISO), `relativeTime`, `viewLines`, `visibleText` / `isHiddenChar` / `escapeHidden`,
+  `clampText`, `humanizeId`. Local types with the spec's field names, a little wider so the SDK's types fit as they are:
   `HoldReceipt`, `HoldDetails` (same name as the modal), `HoldCaller`, `HoldFamily`, `HoldInputState`.
-- Gallery views `holds` and `hold-details`, both in the rendered check (contrast, ink, scrollbars, 1280 + 375, light + dark).
+- QA round 1 (packages#17, QA-UI17-1..9), all in this version:
+  - The view: a run of blank lines shows as one blank line; a visible caption above it ("What the agent asks" / "What
+    the app asks"); when it is taller than its box (max `min(480px, 60vh)`), a bottom fade and "N more lines — scroll to
+    read all" under it, also the region's description for screen readers.
+  - `visibleText` drops the SDK `clean()` list (spec 0.1.84, incl. ZWNJ/ZWJ, U+2028/2029, U+2060–2064, tag characters,
+    lone surrogates) plus display-only blanks (U+00AD, U+034F, Hangul fillers, U+180B–180F, U+2800, U+FFF9–FFFB). Every
+    details row goes through it inside a `<bdi>`; the input JSON shows hidden characters as visible escapes (`escapeHidden`).
+  - Approve / Deny only while the status is `held`; after `expiresAt` they are disabled next to an "Expired" tag. An
+    unknown status gets a neutral Tag. Status and family lookups never hit prototype keys.
+  - Times: sizes rounded down both ways (36 h → "in 36 hours", hours up to 48 h, then days), "in under a minute"; the card
+    ticks every 15 s in the last 10 minutes and once at the exact expiry (`relativeTime`).
+  - While a decision runs, focus moves to the card's status line ("Sending your decision…") and back to Approve after;
+    a double click calls `onApprove` / `onDeny` once.
+  - `HoldDetails` checks the answer (holdId, status, op, inputState, caller) and shows an error with Try again for
+    anything else, for null and for a loader that throws at once; closing drops the record from memory.
+  - The reason reads "Rule: …" with "Rule from <app> (<hook>)" (or "Reason: …" without a rule), at the weight of the
+    system sentence; caller name ≤ 120 and summary ≤ 280 code points (`HOLD_TEXT_MAX`, full text in `title`); an app
+    caller gets an "App" Tag instead of "(app)" after the name.
+  - `test/fixtures/spec-holds.ts` (spec 0.1.84 shapes) + `test/spec-types.test.ts`: SDK `Receipt` / `HoldDetails` are
+    assignable to the kit's types and the vocabularies are equal.
+- Gallery views `holds` (with an overflowing view) and `hold-details`, both in the rendered check (contrast, ink,
+  scrollbars, 1280 + 375, light + dark).
 
 ## 0.3.0 (2026-10-17)
 

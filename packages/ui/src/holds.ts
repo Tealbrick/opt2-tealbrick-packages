@@ -112,33 +112,80 @@ export function familyText(family: string | null | undefined): FamilyText {
   return { label: humanizeId(family) || NO_FAMILY.label, sentence: "Calls of this kind wait for your approval." };
 }
 
-/** Removes characters that change how text LOOKS without being seen: C0/C1 controls (tab and newline stay), bidi
-    embeddings/overrides/isolates and marks, zero-width space/word joiner/BOM. Display only; the hash-bound text is not touched. */
+/** Code points that change how text LOOKS without being seen. = the SDK `clean()` list (SDK-API §4.8, spec 0.1.84: C0
+    controls except TAB/LF/CR here, U+007F–U+009F, U+061C, U+200B–U+200F incl. ZWNJ/ZWJ, U+2028/U+2029, U+202A–U+202E,
+    U+2060–U+2064, U+2066–U+2069, U+FEFF, tag characters U+E0000–U+E007F, lone surrogates) plus display-only extras that
+    render blank: soft hyphen U+00AD, combining grapheme joiner U+034F, Hangul fillers U+115F/U+1160/U+3164/U+FFA0,
+    Mongolian free variation selectors and vowel separator U+180B–U+180F, Braille blank U+2800, interlinear annotation
+    U+FFF9–U+FFFB. Variation selectors (U+FE00–U+FE0F) stay: they only pick text or emoji style. */
+export function isHiddenChar(c: number): boolean {
+  return (
+    (c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) ||
+    (c >= 0x7f && c <= 0x9f) ||
+    c === 0x00ad ||
+    c === 0x034f ||
+    c === 0x061c ||
+    c === 0x115f ||
+    c === 0x1160 ||
+    (c >= 0x180b && c <= 0x180f) ||
+    (c >= 0x200b && c <= 0x200f) ||
+    c === 0x2028 ||
+    c === 0x2029 ||
+    (c >= 0x202a && c <= 0x202e) ||
+    (c >= 0x2060 && c <= 0x2064) ||
+    (c >= 0x2066 && c <= 0x2069) ||
+    c === 0x2800 ||
+    c === 0x3164 ||
+    (c >= 0xd800 && c <= 0xdfff) ||
+    c === 0xfeff ||
+    c === 0xffa0 ||
+    (c >= 0xfff9 && c <= 0xfffb) ||
+    (c >= 0xe0000 && c <= 0xe007f)
+  );
+}
+
+/** Drops every hidden character (isHiddenChar). Display only; the hash-bound text is not touched. */
 export function visibleText(s: string): string {
+  let out = "";
+  for (const ch of s) if (!isHiddenChar(ch.codePointAt(0) ?? 0)) out += ch;
+  return out;
+}
+
+const BACKSLASH = String.fromCharCode(92);
+/** Writes every hidden character as a visible `\uXXXX` / `\u{XXXXX}` escape (for the technical JSON view: the owner sees that
+    the character is there). */
+export function escapeHidden(s: string): string {
   let out = "";
   for (const ch of s) {
     const c = ch.codePointAt(0) ?? 0;
-    const control = (c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) || (c >= 0x7f && c <= 0x9f);
-    const bidi = (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) || c === 0x200e || c === 0x200f || c === 0x061c;
-    const zeroWidth = c === 0x200b || c === 0x2060 || c === 0xfeff;
-    if (!control && !bidi && !zeroWidth) out += ch;
+    if (!isHiddenChar(c) || c === 0x09 || c === 0x0a) out += ch;
+    else out += c > 0xffff ? `${BACKSLASH}u{${c.toString(16).toUpperCase()}}` : `${BACKSLASH}u${c.toString(16).toUpperCase().padStart(4, "0")}`;
   }
   return out;
+}
+
+/** At most `max` code points; longer text ends with "…". */
+export function clampText(s: string, max: number): string {
+  const cps = Array.from(s);
+  return cps.length <= max ? s : `${cps.slice(0, Math.max(0, max - 1)).join("")}…`;
 }
 
 export type ViewLine = { text: string; indent: number };
 
 /** The view as lines: line breaks kept, leading spaces become an indent level (a tab = 2 spaces), so a wrapped line keeps
-    its indent. Blank lines stay (text ""). */
+    its indent. A run of blank lines shows as ONE blank line (display only: a long run of newlines cannot push a later line
+    out of sight). */
 export function viewLines(view: string): ViewLine[] {
-  return visibleText(view)
-    .split(/\r\n|\r|\n/)
-    .map((line) => {
-      const lead = /^[ \t]*/.exec(line)?.[0] ?? "";
-      let indent = 0;
-      for (const ch of lead) indent += ch === "\t" ? 2 : 1;
-      return { text: line.slice(lead.length).trimEnd(), indent };
-    });
+  const out: ViewLine[] = [];
+  for (const line of visibleText(view).split(/\r\n|\r|\n/)) {
+    const lead = /^[ \t]*/.exec(line)?.[0] ?? "";
+    let indent = 0;
+    for (const ch of lead) indent += ch === "\t" ? 2 : 1;
+    const text = line.slice(lead.length).trimEnd();
+    if (!text && out.length > 0 && out[out.length - 1]?.text === "") continue;
+    out.push({ text, indent: text ? indent : 0 });
+  }
+  return out;
 }
 
 export type TimeOptions = {
@@ -151,27 +198,31 @@ export type TimeOptions = {
 };
 export type HoldTime = { relative: string; absolute: string; utc: string; iso: string };
 
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["day", 86_400_000],
-  ["hour", 3_600_000],
-  ["minute", 60_000],
-];
+const MINUTE = 60_000;
+const HOUR = 3_600_000;
+const DAY = 86_400_000;
 
-/** A time (ms, or an ISO 8601 string) in the viewer's zone (Intl): relative ("5 minutes ago", "in 2 days"), absolute with
+/** Relative words for a distance in ms. The size is rounded DOWN in both directions (never more time left than there is):
+    under a minute → "in under a minute" / "under a minute ago"; under an hour → minutes; under 48 hours → hours (36 h →
+    "in 36 hours"); else days. */
+export function relativeTime(diff: number, locale?: string): string {
+  const abs = Math.abs(diff);
+  const future = diff >= 0;
+  if (abs < MINUTE) return future ? "in under a minute" : "under a minute ago";
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
+  const [n, unit]: [number, Intl.RelativeTimeFormatUnit] =
+    abs < HOUR ? [Math.floor(abs / MINUTE), "minute"] : abs < 2 * DAY ? [Math.floor(abs / HOUR), "hour"] : [Math.floor(abs / DAY), "day"];
+  return rtf.format(future ? n : -n, unit);
+}
+
+/** A time (ms, or an ISO 8601 string) in the viewer's zone (Intl): relative ("5 minutes ago", "in 36 hours"), absolute with
     the zone name, and UTC. null for a missing or invalid time. */
 export function holdTime(at: number | string | null | undefined, o: TimeOptions = {}): HoldTime | null {
   const ms = typeof at === "string" ? Date.parse(at) : at;
   if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return null;
-  const diff = ms - (o.now ?? Date.now());
-  const rtf = new Intl.RelativeTimeFormat(o.locale, { numeric: "auto" });
-  let relative = rtf.format(0, "second"); // under a minute: "now"
-  for (const [unit, size] of UNITS)
-    if (Math.abs(diff) >= size) {
-      relative = rtf.format(Math.round(diff / size), unit);
-      break;
-    }
+  const relative = relativeTime(ms - (o.now ?? Date.now()), o.locale);
   const fields: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" };
   const absolute = new Intl.DateTimeFormat(o.locale, { ...fields, timeZone: o.timeZone }).format(d);
   const utc = new Intl.DateTimeFormat(o.locale, { ...fields, timeZone: "UTC" }).format(d);

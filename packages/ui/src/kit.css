@@ -307,6 +307,10 @@ button.tb-choice {
   overflow-wrap: anywhere;
 }
 .tb-hold-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s1) var(--tb-s2);
   margin: 0;
   color: var(--tb-ink-soft);
   font-size: var(--tb-text-label);
@@ -315,18 +319,51 @@ button.tb-choice {
 .tb-hold-by strong {
   color: var(--tb-ink);
   font-weight: var(--tb-weight-label);
+  unicode-bidi: isolate;
 }
-.tb-hold-view {
-  max-height: 480px;
-  overflow: auto;
-  padding: var(--tb-s3) var(--tb-s4);
+.tb-hold-view-block {
+  display: grid;
+  gap: var(--tb-s1);
+  min-width: 0;
+}
+.tb-hold-caption {
+  margin: 0;
+  color: var(--tb-muted);
+  font-size: var(--tb-text-label);
+  font-weight: var(--tb-weight-label);
+}
+/* the frame carries the ring and clips the fade to the brick corners */
+.tb-hold-view-frame {
+  position: relative;
   border-radius: var(--tb-radius-brick);
   background: var(--tb-paper);
   box-shadow: var(--tb-ring);
+  overflow: hidden;
+}
+.tb-hold-view-frame.is-more::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--tb-hair);
+  bottom: var(--tb-hair);
+  height: var(--tb-s12);
+  background: linear-gradient(to bottom, transparent, var(--tb-paper));
+  pointer-events: none;
+}
+.tb-hold-view {
+  position: relative;
+  max-height: min(480px, 60vh);
+  overflow: auto;
+  padding: var(--tb-s3) var(--tb-s4);
   color: var(--tb-ink);
   font-size: var(--tb-text-body);
   line-height: var(--tb-leading-body);
   overflow-wrap: anywhere;
+}
+.tb-hold-more {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-label);
+  font-weight: var(--tb-weight-label);
 }
 .tb-hold-line {
   min-height: calc(var(--tb-leading-body) * 1em);
@@ -353,8 +390,7 @@ button.tb-choice {
   color: var(--tb-ink);
   font-weight: var(--tb-weight-label);
 }
-.tb-hold-why > .tb-hold-reason {
-  color: var(--tb-ink);
+.tb-hold-why > .tb-hold-reason > span {
   unicode-bidi: isolate;
 }
 .tb-hold-facts {
@@ -386,6 +422,11 @@ button.tb-choice {
 }
 .tb-hold-actions:empty {
   display: none;
+}
+.tb-hold-busy {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-label);
 }
 /* one block child in the dialog body grid: a scrolling JSON block keeps its own height (a scroll container as a grid
    item would shrink to fit and scroll in a 70px slot); a long word in the title (an e-mail address) wraps */
