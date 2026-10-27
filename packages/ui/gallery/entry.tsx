@@ -1,6 +1,7 @@
 /* Kit gallery: every @opt2-tealbrick/ui export in its states, rendered from the BUILT package (dist), so the rendered
    checks (scripts/check-rendered.ts: contrast in every state, scrollbars, ink centring) test what consumers install.
-   Views: ?view=components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table */
+   Views: ?view=components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table
+   | holds (0.4.0: HoldCard) | hold-details (0.4.0: HoldDetails open, loaded) */
 import { type ReactNode, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -23,6 +24,9 @@ import {
   Dialog,
   EmptyState,
   Field,
+  HoldCard,
+  HoldDetails,
+  type HoldDetails as HoldDetailsRecord,
   IconButton,
   Kicker,
   Lockup,
@@ -655,7 +659,103 @@ function TableView() {
   );
 }
 
+// 0.4.0 (C369): hold cards as an app's Holds page shows them, and the "More details" modal with a loaded record.
+const HOLD_NOW = Date.now();
+const MAIL_VIEW = [
+  "Send an email",
+  "Account: Front desk (Gmail)",
+  "To: ana.novak@example.com",
+  "Subject: Thanks for the call, and the price list we talked about on Tuesday afternoon",
+  "Attachments (names only): price-list-2027.pdf",
+  "",
+  "Text (plain text, first 500 characters):",
+  "  Hello Ana,",
+  "  thanks for the call today. The price list is attached.",
+  "    Best regards, Front desk",
+].join("\n");
+const GALLERY_HOLDS = [
+  {
+    id: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
+    op: "mail_send",
+    opTitle: "Send email",
+    summary: "Email to ana.novak@example.com: Thanks for the call",
+    view: MAIL_VIEW,
+    holdFamily: "outward",
+    heldBy: null,
+    caller: { type: "agent", id: "agt_front", name: "Front desk" },
+    status: "held",
+    createdAt: HOLD_NOW - 5 * 60_000,
+    expiresAt: HOLD_NOW + 2 * 86_400_000,
+  },
+  {
+    id: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W9",
+    op: "issue_delete",
+    summary: "Delete issue “Old price list” with its comments",
+    view: "Delete issue\nIssue: Old price list\nProject: Launch\nComments: 4",
+    holdFamily: "policy",
+    holdReason: "Deleting anything in the Launch project waits for Martin.",
+    heldBy: "rules/rules_gate",
+    caller: { type: "app", id: "ins_evo", name: "Evolving Workflows", product: "evolution" },
+    status: "held",
+    createdAt: HOLD_NOW - 26 * 3_600_000,
+    expiresAt: HOLD_NOW + 3_600_000,
+  },
+];
+const GALLERY_DETAILS: HoldDetailsRecord = {
+  holdId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
+  op: "mail_send",
+  opTitle: "Send email",
+  tool: "GMAIL_SEND_EMAIL",
+  family: "outward",
+  reason: "Outward mail waits for you.",
+  heldBy: null,
+  caller: { type: "agent", id: "agt_front", name: "Front desk" },
+  callId: "cal_01HZX3K8Q2V4N6P8R0S2T4V6WA",
+  receiptId: "hld_01HZX3K8Q2V4N6P8R0S2T4V6W8",
+  inputDigest: "sha256:4f1c0d3b2a9e8f7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a3928170615",
+  input: JSON.stringify({
+    to: ["ana.novak@example.com"],
+    subject: "Thanks for the call",
+    body: "Hello Ana, thanks for the call today.",
+    attachments: ["price-list-2027.pdf"],
+  }),
+  createdAt: HOLD_NOW - 5 * 60_000,
+  expiresAt: HOLD_NOW + 2 * 86_400_000,
+  viewSha256: "sha256:9a8b7c6d5e4f30211203f4e5d6c7b8a99a8b7c6d5e4f30211203f4e5d6c7b8a9",
+  extra: { upstream: "gmail", method: "POST", path: "/gmail/v1/users/me/messages/send" },
+};
+
+function HoldsView() {
+  const [open, setOpen] = useState(view === "hold-details");
+  return (
+    <>
+      <PortalHeader />
+      <main className="page tb-stack" data-gallery="holds">
+        {GALLERY_HOLDS.map((h, i) => (
+          <HoldCard
+            key={h.id}
+            hold={h}
+            onApprove={() => {}}
+            onDeny={() => {}}
+            busy={i === 1 && q.has("busy")}
+            onDetails={() => setOpen(true)}
+            headingLevel={2}
+          />
+        ))}
+      </main>
+      <HoldDetails
+        open={open}
+        onClose={() => setOpen(false)}
+        holdId={GALLERY_DETAILS.holdId}
+        load={async () => GALLERY_DETAILS}
+        title={GALLERY_HOLDS[0]?.summary}
+      />
+    </>
+  );
+}
+
 function App() {
+  if (view === "holds" || view === "hold-details") return <HoldsView />;
   if (view === "table") return <TableView />;
   if (view === "reading") return <ReadingView />;
   if (view === "stepflow") return <StepFlowView />;

@@ -39,6 +39,7 @@ const pages: [string, number, number[]?][] = [ // [gallery view (query), StepFlo
   ['index.html?view=shell', 0], ['index.html?view=dialog', 0], ['index.html?view=toast', 0], ['index.html?view=stepflow', 4],
   ['index.html?view=reading', 0, [1280, 1440, 375]], // 0.2.3: tinted panel with controls, prose lists, narrow Select
   ['index.html?view=table', 0], // 0.3.0: Receipts-style ledger table (stacked at <= 480px)
+  ['index.html?view=holds', 0], ['index.html?view=hold-details', 0], // 0.4.0: HoldCard + HoldDetails (C369)
 ];
 
 /* runs in the page: composited contrast of text and outlines inside `scope` */
