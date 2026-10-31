@@ -590,7 +590,7 @@ function AccessList({
             <div className="tb-access-add-field tb-access-add-wide">
               <Select
                 aria-label={scopeWord.one}
-                placeholder={scopeWord.one}
+                placeholder={`${scopeWord.one.charAt(0).toUpperCase()}${scopeWord.one.slice(1)}`}
                 options={scopes.map((s) => ({ value: s.id, label: s.name }))}
                 value={addScope}
                 onValueChange={setAddScope}

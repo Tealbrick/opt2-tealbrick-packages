@@ -553,6 +553,17 @@ ul.tb-access-rows,
   color: var(--tb-brick-ink);
   font-weight: var(--tb-weight-nav);
 }
+@media (max-width: 480px) {
+  .tb-access-who {
+    flex-basis: 100%;
+  }
+  .tb-access-what {
+    flex-basis: 60%;
+  }
+  .tb-access-level {
+    flex-basis: 100%;
+  }
+}
 @media (max-width: 960px) {
   .tb-access-columns {
     grid-template-columns: minmax(0, 1fr);
