@@ -26,7 +26,7 @@ Chromium (Playwright image, no secrets, nothing published): contrast in default,
 
 ## 6. Consumers and pins
 
-ui 0.4.0 (adds `AccessEditor`, C382): connect, kanban, knowledge. ui 0.2.4 (0.3.0 adds app art for Observer, Live Artifacts and Creative and the stacked Table): admin, evolution, fleet, inbox, rules, portal-gui. 0.2.3: samples and the template. 0.2.1: website. 0.2.0: TBD chat.
+ui 0.4.1 (`AccessEditor`, C382): connect, kanban, knowledge. ui 0.2.4 (0.3.0 adds app art for Observer, Live Artifacts and Creative and the stacked Table): admin, evolution, fleet, inbox, rules, portal-gui. 0.2.3: samples and the template. 0.2.1: website. 0.2.0: TBD chat.
 
 ## 7. Known gaps
 

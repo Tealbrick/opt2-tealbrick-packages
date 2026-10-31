@@ -176,7 +176,7 @@ function FilterField({
           ? "This regex can freeze the page. Matching as plain text."
           : filter.invalid
             ? "Not a valid regex. Matching as plain text."
-            : "Plain text and regex both work, for example ^(?!QA)."
+            : "Plain text or a regex, such as ^(?!QA)."
       }
     >
       <TextInput
