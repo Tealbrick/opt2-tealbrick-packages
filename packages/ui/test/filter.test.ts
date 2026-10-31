@@ -20,6 +20,7 @@ test("wording: the count says loaded for a paged list; nothing says what was sea
   assert.match(filterPagedText(100, NOUN), /More are not loaded yet/);
   assert.match(filterNothingText(100, NOUN, true), /^No loaded receipt matches\. The filter searches only the 100 receipts loaded so far/);
   assert.equal(filterNothingText(12, NOUN, false), "No receipt matches. The filter searched all 12 receipts.");
+  assert.equal(filterNothingText(0, NOUN, false), "No receipt matches this filter.");
   assert.equal(filterHiddenText(1, { one: "held approval", many: "held approvals" }), "1 held approval is hidden by the filter. Clear the filter to see it.");
   assert.equal(
     filterHiddenText(3, { one: "held approval", many: "held approvals" }),

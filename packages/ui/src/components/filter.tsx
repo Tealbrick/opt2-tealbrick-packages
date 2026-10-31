@@ -113,6 +113,7 @@ export function filterPagedText(loaded: number, noun: FilterNoun): string {
 
 /** What to say when the filter leaves nothing. A paged list never says only "nothing": it says what was searched. */
 export function filterNothingText(loaded: number, noun: FilterNoun, more: boolean): string {
+  if (loaded === 0 && !more) return `No ${noun.one} matches this filter.`;
   return more
     ? `No loaded ${noun.one} matches. ${filterPagedText(loaded, noun)}`
     : `No ${noun.one} matches. The filter searched all ${num(loaded)} ${nounOf(loaded, noun)}.`;
