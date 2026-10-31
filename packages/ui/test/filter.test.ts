@@ -174,3 +174,25 @@ test("typing in the field calls onChange; a bad regex falls back to plain text a
   assert.equal(listFilter("^a").test("bac"), false);
   await m.unmount();
 });
+
+test("while rows load for a new server filter the bar says Loading and does not claim nothing was found", async () => {
+  const { ListFilter, listFilter } = await ui();
+  const m = await mount(
+    h(ListFilter, {
+      label: "Filter",
+      value: "",
+      onChange: () => {},
+      filter: listFilter(""),
+      noun: NOUN,
+      shown: 0,
+      total: 0,
+      facets: true,
+      busy: true,
+      onClear: () => {},
+    }),
+  );
+  const text = m.root.textContent ?? "";
+  assert.match(text, /Loading\./);
+  assert.doesNotMatch(text, /No receipt matches/);
+  await m.unmount();
+});

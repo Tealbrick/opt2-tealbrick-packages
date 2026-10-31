@@ -144,6 +144,8 @@ export type ListFilterProps = {
   loadedOnly?: boolean;
   /** clears the text and every facet */
   onClear: () => void;
+  /** the rows are loading (a new server filter): no count and no "nothing" until they are here */
+  busy?: boolean;
   /** the page's own "Show older" action, offered again when nothing matches among the loaded rows */
   onLoadMore?: () => void;
   loadMoreLabel?: string;
@@ -178,6 +180,7 @@ export function ListFilter({
   onLoadMore,
   loadMoreLabel = "Show older",
   loadingMore = false,
+  busy = false,
   hidden = 0,
   hiddenNoun,
   children,
@@ -193,7 +196,9 @@ export function ListFilter({
         {children}
       </div>
       <div className="tb-listfilter-status" role="status" aria-live="polite">
-        {on ? (
+        {busy ? (
+          <span>Loading.</span>
+        ) : on ? (
           <>
             <span>{filterCountText(shown, total, noun, more)}</span>
             {partial ? <span>{filterPagedText(total, noun)}</span> : null}
@@ -201,7 +206,7 @@ export function ListFilter({
           </>
         ) : null}
       </div>
-      {on && shown === 0 ? (
+      {on && !busy && shown === 0 ? (
         <Notice tone="needs-you">
           <span className="tb-row">
             <span>{filterNothingText(total, noun, partial)}</span>
