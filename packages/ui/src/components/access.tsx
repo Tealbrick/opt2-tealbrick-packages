@@ -295,6 +295,7 @@ export function AccessPickColumn({
   onSelectShown,
   onClear,
   tools,
+  note,
 }: {
   label: string;
   /** The text above the filter; the count of what shows is added. */
@@ -310,6 +311,8 @@ export function AccessPickColumn({
   onClear: () => void;
   /** Buttons before Select all shown. */
   tools?: ReactNode;
+  /** Under the buttons: what the list leaves out, or a setting that shows but cannot change. */
+  note?: ReactNode;
 }) {
   return (
     <section className="tb-access-column" aria-label={label}>
@@ -320,6 +323,7 @@ export function AccessPickColumn({
           <Button onClick={onSelectShown}>Select all shown</Button>
           <Button onClick={onClear}>Clear</Button>
         </div>
+        {note}
       </div>
       <PickList label={label} items={items} picked={picked} onToggle={onToggle} />
     </section>
