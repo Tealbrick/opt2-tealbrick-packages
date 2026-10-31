@@ -1,5 +1,11 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.7.0 (2026-11-01)
+
+C382 batch 4. No breaking change. Apps get the filter at their next release.
+- `ListFilter`: one filter bar for long lists. A text field (plain text or a regex), the facets of the page beside it (children), "Showing N of M" and Clear while any filter is on, so a filter never hides that it is on. A paged list says in words that the filter reads only the rows loaded so far (`more`), and "no match" says what was searched and offers the page's own Show older. `hidden` announces items a person must not miss, such as held approvals, as an alert.
+- The matching, the memory per viewer and the field moved to `components/filter.tsx` and are exported under list names too: `listFilter`, `useListFilter`, `ListFilterField`. `accessFilter`, `useAccessFilter` and `AccessFilterField` stay. The wording is exported for tests: `filterCountText`, `filterPagedText`, `filterNothingText`, `filterHiddenText`.
+
 ## 0.6.0 (2026-10-31)
 
 C382 batch 3. No breaking change. Apps get the two fixes at their next release.

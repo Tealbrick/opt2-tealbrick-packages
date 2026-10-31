@@ -621,3 +621,30 @@ ul.tb-access-rows,
     max-height: 480px;
   }
 }
+
+/* ListFilter (C382 batch 4): the bar above a long list */
+.tb-listfilter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tb-s3);
+  margin-bottom: var(--tb-s3);
+}
+.tb-listfilter-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--tb-s3) var(--tb-s4);
+}
+.tb-listfilter-fields > * {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.tb-listfilter-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s2) var(--tb-s3);
+}
+.tb-listfilter-status:empty {
+  display: none;
+}

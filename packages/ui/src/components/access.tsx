@@ -1,6 +1,6 @@
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "./button.tsx";
-import { Field, TextInput } from "./field.tsx";
+import { AccessFilterField, accessFilter, count, useAccessFilter } from "./filter.tsx";
 import { cx } from "./ink.tsx";
 import { Select } from "./select.tsx";
 import { Notice } from "./surfaces.tsx";
@@ -67,27 +67,6 @@ export function accessDifferences(
     }
   }
   return rows;
-}
-
-/**
- * A repeated group after another repeat or a choice, such as (a+)+ or (a|aa)+: its run time can explode on one name, and
- * the filter is remembered, so the page would freeze at every load. A rule of thumb, wide on purpose: such a filter runs as plain text.
- */
-const slowRegex = (q: string) => [...q.matchAll(/\)\s*[+*{]/gu)].some((m) => /[+*{|]/u.test(q.slice(0, m.index)));
-export const ACCESS_FILTER_MAX = 200;
-
-/** A filter: a case-insensitive regex; `invalid` when it cannot be used as one, and then it matches as plain text. */
-export function accessFilter(query: string): { test: (text: string) => boolean; invalid: boolean; slow?: boolean } {
-  const q = query.trim();
-  if (!q) return { test: () => true, invalid: false };
-  const plain = (text: string) => text.toLowerCase().includes(q.toLowerCase());
-  if (slowRegex(q)) return { test: plain, invalid: true, slow: true };
-  try {
-    const re = new RegExp(q, "i");
-    return { test: (text) => re.test(text), invalid: false };
-  } catch {
-    return { test: plain, invalid: true };
-  }
 }
 
 export type AccessChange = { agent: string; scope: string; level: AccessLevelId };
@@ -157,68 +136,6 @@ export function accessUnconfirmed(changes: readonly AccessChange[], failed: read
   return changes
     .filter((c) => !gone.has(key(c.agent, c.scope)) && (index.get(key(c.agent, c.scope))?.level ?? null) !== c.level)
     .map((c) => ({ ...c, reason: "The app reports another level after this change." }));
-}
-
-/** Browser storage can throw or be empty (private window, blocked site data): a filter is only a convenience. */
-export function useAccessFilter(storageKey: string): [string, (value: string) => void] {
-  const [value, setValue] = useState(() => {
-    try {
-      return (globalThis.localStorage?.getItem(storageKey) ?? "").slice(0, ACCESS_FILTER_MAX);
-    } catch {
-      return "";
-    }
-  });
-  const set = useCallback(
-    (next: string) => {
-      setValue(next);
-      try {
-        globalThis.localStorage?.setItem(storageKey, next);
-      } catch {
-        // the filter stays for this page only
-      }
-    },
-    [storageKey],
-  );
-  return [value, set];
-}
-
-const count = (n: number, one: string, many: string) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
-
-/** The filter field of the kit: plain text or a regex, and it says when a text cannot run as a regex. */
-export function AccessFilterField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  filter,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  filter: { invalid: boolean; slow?: boolean };
-}) {
-  return (
-    <Field
-      label={label}
-      hint={
-        filter.slow
-          ? "This regex can freeze the page. Matching as plain text."
-          : filter.invalid
-            ? "Not a valid regex. Matching as plain text."
-            : "Plain text or a regex, such as ^(?!QA)."
-      }
-    >
-      <TextInput
-        value={value}
-        maxLength={ACCESS_FILTER_MAX}
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </Field>
-  );
 }
 
 /** A multi-select list: one Tab stop, arrows move, Space or Enter toggles. A Tab per row would mean 192 Tabs to reach the levels. */

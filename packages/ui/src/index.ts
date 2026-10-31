@@ -5,7 +5,6 @@ export { APP_COLOUR_IDS, APPS, type AppArt, type AppGroup, type AppIdentity, app
 export { BRAND_MARK_HEIGHT, BRAND_MARK_SRC, BRAND_MARK_WIDTH } from "./brand-mark.ts";
 export {
   ACCESS_FAILURES_SHOWN,
-  ACCESS_FILTER_MAX,
   type AccessAction,
   type AccessAgent,
   AccessBulk,
@@ -16,7 +15,6 @@ export {
   AccessEditor,
   type AccessEditorProps,
   type AccessFailure,
-  AccessFilterField,
   type AccessLevelId,
   type AccessLogEntry,
   type AccessOption,
@@ -28,12 +26,10 @@ export {
   type AccessWords,
   accessChanges,
   accessDifferences,
-  accessFilter,
   accessIndex,
   accessSessionEnded,
   accessUnconfirmed,
   accessWriteAll,
-  useAccessFilter,
   useAccessPicks,
 } from "./components/access.tsx";
 export {
@@ -50,6 +46,22 @@ export {
 } from "./components/button.tsx";
 export { Dialog, type DialogProps } from "./components/dialog.tsx";
 export { Field, type FieldInfo, fieldAria, NativeSelect, type SelectOption, Textarea, TextInput, useField } from "./components/field.tsx";
+export {
+  ACCESS_FILTER_MAX,
+  AccessFilterField,
+  accessFilter,
+  type FilterNoun,
+  filterCountText,
+  filterHiddenText,
+  filterNothingText,
+  filterPagedText,
+  ListFilter,
+  ListFilterField,
+  type ListFilterProps,
+  listFilter,
+  useAccessFilter,
+  useListFilter,
+} from "./components/filter.tsx";
 export { AppIcon, AppMark, appName, BrandMark, type IconSize, Lockup } from "./components/identity.tsx";
 export { ArrowIcon, CartIcon, CloseIcon, cx, Ink, inked, SearchIcon } from "./components/ink.tsx";
 export { Menu, PayPill, Tabs, Toast } from "./components/nav.tsx";
