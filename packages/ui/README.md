@@ -7,7 +7,7 @@ The Tealbrick design system for every opt2 surface (Portal GUI, mini apps, websi
 Releases are CI-built GitHub tarballs (never npm). The repository is private, so install from the public mirror in `Tealbrick/opt2-tealbrick-dist`. Pin the URL and its integrity (`coordination/specs/RELEASES.md`):
 
 ```json
-"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.4.1/opt2-tealbrick-ui-0.4.1.tgz"
+"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.5.0/opt2-tealbrick-ui-0.5.0.tgz"
 ```
 
 ## Use
@@ -27,7 +27,7 @@ App stills (10 apps: the 7 opt2 apps, Observer, Live Artifacts and Creative): co
 
 ## Access pages
 
-`AccessEditor` replaces a grid of agents and scopes: the defaults once, then only what differs, plus a bulk editor. Give it the app's levels and default rule from `tealbrick.manifest.json`, the stored rows, and the app's existing per-cell write. See `src/components/access.tsx`.
+`AccessEditor` replaces a grid of agents and scopes: the defaults once, then only what differs, plus a bulk editor. Give it the app's levels and default rule from `tealbrick.manifest.json`, the stored rows, and the app's existing per-cell write. See `src/components/access.tsx`. `AccessBulk` is the bulk editor alone, for one scope: pick many, then one value. Use `writeMany` when the app's op replaces a whole list.
 
 ## Guard (run it in CI)
 

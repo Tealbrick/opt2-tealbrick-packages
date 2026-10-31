@@ -40,6 +40,7 @@ const pages: [string, number, number[]?][] = [ // [gallery view (query), StepFlo
   ['index.html?view=reading', 0, [1280, 1440, 375]], // 0.2.3: tinted panel with controls, prose lists, narrow Select
   ['index.html?view=table', 0], // 0.3.0: Receipts-style ledger table (stacked at <= 480px)
   ['index.html?view=access', 0, [1440, 1280, 375]], ['index.html?view=access&step=many', 0, [1440, 1280, 375]], // 0.4.0: AccessEditor, defaults + differences, and the three-column picker
+  ['index.html?view=access-one', 0, [1440, 375]], ['index.html?view=access-one&step=many', 0, [1440, 375]], ['index.html?view=access-one&step=level', 0, [1440, 375]], ['index.html?view=access-one&step=owner', 0, [1440, 375]], // 0.5.0: one scope, and AccessBulk
 ];
 
 /* runs in the page: composited contrast of text and outlines inside `scope` */
@@ -473,7 +474,7 @@ if (!ONLY || ONLY.includes('access')) {
   const fired = await p0.evaluate(accessCheck);
   if (!fired.some(x => x.includes('sideways')) || !fired.some(x => x.startsWith('target'))) accessFails.push(`self-test did not fire: ${fired.slice(0, 3).join('; ')}`);
   await c0.close();
-  for (const file of ['index.html?view=access&big=1', 'index.html?view=access&big=1&step=many']) for (const width of [1440, 1280, 375]) {
+  for (const file of ['index.html?view=access&big=1', 'index.html?view=access&big=1&step=many', 'index.html?view=access-one&big=1', 'index.html?view=access-one&big=1&step=many', 'index.html?view=access-one&big=1&step=level', 'index.html?view=access-one&big=1&step=owner']) for (const width of [1440, 1280, 375]) {
     const c2 = await browser.newContext({ viewport: { width, height: 860 } }); const p2 = await c2.newPage();
     await p2.goto(base + file); await p2.waitForSelector('[data-gallery="access"] .tb-btn');
     for (const b of await p2.evaluate(accessCheck)) accessFails.push(`${file} ${width}: ${b}`);
@@ -481,7 +482,7 @@ if (!ONLY || ONLY.includes('access')) {
   }
 }
 for (const f of accessFails) console.error(`ACCESS ${f}`);
-console.log(`access: both views at 1440/1280/375, no sideways scroll, 44px targets, at most 3 dropdowns: ${accessFails.length} failures (self-test ok)`);
+console.log(`access: all views at 1440/1280/375, no sideways scroll, 44px targets, at most 3 dropdowns: ${accessFails.length} failures (self-test ok)`);
 
 const inkFails = inkRows.filter(r => Math.abs(r.diff) > .5);
 const byControl = new Map<string, number[]>();

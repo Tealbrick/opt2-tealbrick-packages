@@ -423,6 +423,18 @@ ul.tb-access-rows,
   height: clamp(520px, calc(100dvh - 200px), 860px);
   min-width: 0;
 }
+/* one scope: the people, then the choice. The choice can hold a form, so that column scrolls as one */
+.tb-access-columns.is-fixed {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+}
+.tb-access-columns.is-fixed > .tb-access-column:last-child {
+  overflow-y: auto;
+}
+.tb-access-columns.is-fixed > .tb-access-column:last-child > .tb-access-column-body {
+  flex: none;
+  overflow: visible;
+  max-height: none;
+}
 .tb-access-column {
   display: flex;
   flex-direction: column;
@@ -540,6 +552,25 @@ ul.tb-access-rows,
   grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   gap: var(--tb-s2);
 }
+/* a long list of values (the people who can own an agent) scrolls by itself */
+.tb-access-levels.is-long {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--tb-focus-width);
+}
+.tb-access-levels.has-hints {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tb-access-level-choice {
+  display: grid;
+  min-width: 0;
+}
+.tb-access-levels.has-hints .tb-access-level-choice {
+  gap: var(--tb-s1);
+}
+.tb-access-level-choice > .tb-btn {
+  width: 100%;
+}
 .tb-access-confirm {
   display: grid;
   gap: var(--tb-s2);
@@ -550,6 +581,14 @@ ul.tb-access-rows,
   padding-top: var(--tb-s2);
   border-top: var(--tb-hair) solid var(--tb-line);
   overflow-wrap: anywhere;
+}
+.tb-access-log-box {
+  display: grid;
+  gap: var(--tb-s2);
+  padding: var(--tb-s3) var(--tb-s4);
+}
+.tb-access-log-box > p {
+  margin: 0;
 }
 .tb-access-failures {
   margin: 0;
@@ -570,7 +609,8 @@ ul.tb-access-rows,
   }
 }
 @media (max-width: 960px) {
-  .tb-access-columns {
+  .tb-access-columns,
+  .tb-access-columns.is-fixed {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
   }
