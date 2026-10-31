@@ -1,5 +1,15 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.4.0 (2026-10-31)
+
+New component, no breaking change (C382). Apps on 0.2.4 also pick up 0.3.0 when they move here: read that section.
+- `AccessEditor`: who may do what, without a grid of agents and scopes. The opening view shows each default once (read only), then only what differs from it by value, with "Back to default" and a one-line add. "Add or change many" opens three columns: agents, scopes (current level or Mixed for the picked agents, "Only with access"), one click per level with a sentence that gives the count, and a session log. It renders at most 3 dropdowns at any size.
+- The page gives agents, scopes, its levels, the default lines, stored cells, `defaultOf`, its existing per-cell `write` and `reload`. A cell can carry a `note` and an `action` (Allow, Accept, Use this access): the action shows also at the default level and runs only on the click.
+- Filters take plain text or a regex such as `^(?!QA)`. An invalid regex, or one that nests repeats, matches as plain text and says so. Each browser remembers its filters (storage errors are caught).
+- Bulk: at most 4 writes at a time, a pair already at the level is not written, above 25 changes it asks once, and a failed or held write shows per row in the log. A write the read-back does not confirm counts as failed.
+- Helpers for tests and pages: `accessDifferences`, `accessFilter`, `accessChanges`, `accessWriteAll`, `accessUnconfirmed`, `accessIndex`.
+- Rendered check: the view in both states at 1440, 1280 and 375, light and dark, and a layout test at 32 agents x 192 scopes (no sideways scroll, 44px targets, at most 3 dropdowns; self-test fires).
+
 ## 0.3.0 (2026-10-17)
 
 Found in Live Artifacts S5 (mini-apps lead). One breaking rename, with its migration note.

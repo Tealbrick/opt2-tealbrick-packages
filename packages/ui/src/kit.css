@@ -290,3 +290,290 @@ button.tb-choice {
     text-align: left;
   }
 }
+
+/* ------------------------------------------------------------------ AccessEditor (C382): defaults once, then only what differs; bulk picker in three columns */
+.tb-access {
+  display: grid;
+  gap: var(--tb-s6);
+  min-width: 0;
+}
+.tb-access-lede {
+  margin: 0;
+  color: var(--tb-ink-soft);
+}
+.tb-access-part {
+  gap: var(--tb-s3);
+  min-width: 0;
+}
+.tb-access-head {
+  margin: 0;
+  font-size: var(--tb-text-title);
+  font-weight: var(--tb-weight-label);
+}
+.tb-access-head:focus {
+  outline: none;
+}
+.tb-access-rows {
+  border-radius: var(--tb-radius-brick);
+  background: var(--tb-tile);
+  box-shadow: var(--tb-ring);
+  min-width: 0;
+}
+ul.tb-access-rows,
+.tb-access-list-plain {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tb-access-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s2) var(--tb-s3);
+  min-height: var(--tb-target);
+  padding: var(--tb-s2) var(--tb-s4);
+  border-bottom: var(--tb-hair) solid var(--tb-line);
+  overflow-wrap: anywhere;
+}
+.tb-access-defaults .tb-access-row:last-child {
+  border-bottom: 0;
+}
+.tb-access-who {
+  flex: 0 1 200px;
+  min-width: 0;
+  font-weight: var(--tb-weight-label);
+}
+.tb-access-to {
+  flex: none;
+  color: var(--tb-teal-ink);
+  font-weight: var(--tb-weight-label);
+}
+.tb-access-what {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.tb-access-level {
+  flex: 0 1 200px;
+  min-width: 0;
+  font-weight: var(--tb-weight-label);
+}
+.tb-access-extra {
+  flex: 1 1 100%;
+  display: grid;
+  gap: var(--tb-s2);
+  min-width: 0;
+}
+.tb-access-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s2) var(--tb-s3);
+}
+.tb-access-offer > span {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.tb-access-note {
+  margin: 0;
+  color: var(--tb-ink-soft);
+  font-size: var(--tb-text-control);
+}
+.tb-access-empty {
+  margin: 0;
+  padding: var(--tb-s4);
+  border-bottom: var(--tb-hair) solid var(--tb-line);
+}
+.tb-access-more {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s3);
+  padding: var(--tb-s3) var(--tb-s4);
+  border-bottom: var(--tb-hair) solid var(--tb-line);
+}
+.tb-access-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--tb-s2) var(--tb-s3);
+  padding: var(--tb-s3) var(--tb-s4);
+}
+.tb-access-add-field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.tb-access-add-wide {
+  flex-basis: 240px;
+}
+.tb-access-add .tb-btn {
+  flex: none;
+}
+.tb-access-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tb-s3);
+}
+.tb-access-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--tb-s4);
+  height: clamp(520px, calc(100dvh - 200px), 860px);
+  min-width: 0;
+}
+.tb-access-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--tb-radius-brick);
+  background: var(--tb-tile);
+  box-shadow: var(--tb-ring);
+}
+.tb-access-column-head {
+  display: grid;
+  gap: var(--tb-s3);
+  padding: var(--tb-s3) var(--tb-s4);
+  border-bottom: var(--tb-hair) solid var(--tb-line);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tb-access-column-head p {
+  margin: 0;
+}
+.tb-access-column-body {
+  display: grid;
+  align-content: start;
+  gap: var(--tb-s3);
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--tb-s3) var(--tb-s4);
+  overflow-y: auto;
+}
+.tb-access-column-body > p {
+  margin: 0;
+}
+.tb-access-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tb-s2);
+}
+.tb-access-tools .tb-btn[aria-pressed="true"] {
+  background: var(--tb-teal-ink);
+  color: var(--tb-paper);
+}
+.tb-access-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tb-access-none {
+  margin: 0;
+  padding: var(--tb-s4);
+}
+.tb-access-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 var(--tb-s3);
+  box-sizing: border-box;
+  min-height: var(--tb-target);
+  padding: var(--tb-s1) var(--tb-s4);
+  border-bottom: var(--tb-hair) solid var(--tb-line);
+  background: var(--tb-option-fill);
+  color: var(--tb-option-on);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.tb-access-pick:hover {
+  background: var(--tb-option-hover-fill);
+  color: var(--tb-option-hover-on);
+}
+.tb-access-pick:focus-visible {
+  outline: var(--tb-focus-width) solid var(--tb-focus);
+  outline-offset: calc(-1 * var(--tb-focus-width));
+}
+.tb-access-pick::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin-right: calc(-1 * var(--tb-s1));
+  border-radius: var(--tb-radius-brick);
+  box-shadow: inset 0 0 0 var(--tb-hair) var(--tb-field-edge);
+  background: var(--tb-field-fill);
+}
+.tb-access-pick[aria-selected="true"] {
+  background: var(--tb-option-selected-fill);
+  color: var(--tb-option-selected-on);
+}
+.tb-access-pick[aria-selected="true"]:hover {
+  background: var(--tb-option-selected-hover-fill);
+  color: var(--tb-option-selected-hover-on);
+}
+.tb-access-pick[aria-selected="true"]::before {
+  background: var(--tb-teal-ink);
+  box-shadow:
+    inset 0 0 0 4px var(--tb-field-fill),
+    inset 0 0 0 6px var(--tb-teal-ink);
+}
+.tb-access-pick-name {
+  flex: 1 1 60%;
+  min-width: 0;
+  font-weight: var(--tb-weight-label);
+}
+.tb-access-pick-meta {
+  color: inherit;
+  font-size: var(--tb-text-hint);
+  font-weight: var(--tb-weight-body);
+}
+.tb-access-levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: var(--tb-s2);
+}
+.tb-access-confirm {
+  display: grid;
+  gap: var(--tb-s2);
+}
+.tb-access-log {
+  display: grid;
+  gap: var(--tb-s1);
+  padding-top: var(--tb-s2);
+  border-top: var(--tb-hair) solid var(--tb-line);
+  overflow-wrap: anywhere;
+}
+.tb-access-failures {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--tb-brick-ink);
+  font-weight: var(--tb-weight-nav);
+}
+@media (max-width: 480px) {
+  .tb-access-who {
+    flex-basis: 100%;
+  }
+  .tb-access-what {
+    flex-basis: 60%;
+  }
+  .tb-access-level {
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 960px) {
+  .tb-access-columns {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .tb-access-list {
+    max-height: 360px;
+  }
+  .tb-access-column-body {
+    max-height: 480px;
+  }
+}

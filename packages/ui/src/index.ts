@@ -4,6 +4,27 @@
 export { APP_COLOUR_IDS, APPS, type AppArt, type AppGroup, type AppIdentity, appArt, appColour, iconCrop } from "./apps.ts";
 export { BRAND_MARK_HEIGHT, BRAND_MARK_SRC, BRAND_MARK_WIDTH } from "./brand-mark.ts";
 export {
+  ACCESS_FILTER_MAX,
+  type AccessAction,
+  type AccessAgent,
+  type AccessCell,
+  type AccessChange,
+  type AccessDefaultLine,
+  AccessEditor,
+  type AccessEditorProps,
+  type AccessFailure,
+  type AccessLevelId,
+  type AccessOption,
+  type AccessRow,
+  type AccessScope,
+  accessChanges,
+  accessDifferences,
+  accessFilter,
+  accessIndex,
+  accessUnconfirmed,
+  accessWriteAll,
+} from "./components/access.tsx";
+export {
   Avatar,
   Button,
   ButtonLink,

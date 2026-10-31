@@ -1,9 +1,10 @@
 /* Kit gallery: every @opt2-tealbrick/ui export in its states, rendered from the BUILT package (dist), so the rendered
    checks (scripts/check-rendered.ts: contrast in every state, scrollbars, ink centring) test what consumers install.
-   Views: ?view=components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table */
-import { type ReactNode, StrictMode, useState } from "react";
+   Views: ?view=access | components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table */
+import { type ReactNode, StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  AccessEditor,
   AppHeader,
   AppIcon,
   AppMark,
@@ -655,7 +656,63 @@ function TableView() {
   );
 }
 
+/* AccessEditor (C382): the real page sizes (32 agents x 192 scopes), some differences, an offer, a note. ?step=many opens the picker. */
+function AccessView() {
+  // the contrast and ink audit hovers every control, so it runs on a short list; `big=1` is the real size for the layout test
+  const big = q.get("big") === "1";
+  const agents = Array.from({ length: big ? 32 : 6 }, (_, i) => ({
+    id: `a${i}`,
+    name: i < 3 ? (["Henry", "Tempo with a much longer name that has to wrap inside its row", "Polly"][i] ?? "") : `QA fleet ${i}`,
+    note: i === 2 ? "paused" : undefined,
+  }));
+  const scopes = Array.from({ length: big ? 192 : 6 }, (_, i) => ({ id: `s${i}`, name: i === 0 ? "Launch" : `QA project ${i}` }));
+  const [cells, setCells] = useState<
+    { agent: string; scope: string; level: string; note?: string; action?: { text: string; label: string; run: () => Promise<unknown> } }[]
+  >([
+    { agent: "a0", scope: "s1", level: "read", note: "Set here: Henry can read, also where the Portal grant allows less." },
+    { agent: "a1", scope: "s2", level: "manage", action: { text: "This update lets the agent also delete here.", label: "Allow", run: async () => {} } },
+    { agent: "a2", scope: "s3", level: "contribute" },
+  ]);
+  const levels = [
+    { id: "read", label: "Read" },
+    { id: "contribute", label: "Read and work" },
+    { id: "manage", label: "Read, work and delete" },
+  ];
+  useEffect(() => {
+    if (q.get("step") === "many")
+      ([...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Add or change many") as HTMLButtonElement | undefined)?.click();
+  }, []);
+  return (
+    <main className="tb-root" data-gallery="access" style={{ padding: "var(--tb-s4)" }}>
+      <AccessEditor
+        agents={agents}
+        scopes={scopes}
+        levels={levels}
+        scopeWord={{ one: "project", many: "projects" }}
+        defaults={[
+          { what: "Shared projects, for every agent", level: "contribute" },
+          { what: "Its own project, for every agent", level: "manage" },
+          { what: "Any other project", level: null },
+        ]}
+        cells={cells}
+        defaultOf={() => null}
+        write={async (c) => {
+          if (c.agent === "a2" && c.level === null) throw new Error("This change is held for approval.");
+          setCells((old) => [
+            ...old.filter((x) => !(x.agent === c.agent && x.scope === c.scope)),
+            ...(c.level === null ? [] : [{ agent: c.agent, scope: c.scope, level: c.level }]),
+          ]);
+        }}
+        reload={async () => cells}
+        explain={(e) => (e as Error).message}
+        storageKey="gallery-access"
+      />
+    </main>
+  );
+}
+
 function App() {
+  if (view === "access") return <AccessView />;
   if (view === "table") return <TableView />;
   if (view === "reading") return <ReadingView />;
   if (view === "stepflow") return <StepFlowView />;
