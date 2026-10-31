@@ -62,16 +62,19 @@ export function accessDifferences(
   return rows;
 }
 
-/** A group that repeats while it holds a repeat: its run time can explode on one name, and the filter is remembered. */
-const SLOW_REGEX = /\([^)]*[+*}][^)]*\)\s*[+*{]/u;
+/**
+ * A repeated group after another repeat or a choice, such as (a+)+ or (a|aa)+: its run time can explode on one name, and
+ * the filter is remembered, so the page would freeze at every load. A rule of thumb, wide on purpose: such a filter runs as plain text.
+ */
+const slowRegex = (q: string) => [...q.matchAll(/\)\s*[+*{]/gu)].some((m) => /[+*{|]/u.test(q.slice(0, m.index)));
 export const ACCESS_FILTER_MAX = 200;
 
 /** A filter: a case-insensitive regex; `invalid` when it cannot be used as one, and then it matches as plain text. */
-export function accessFilter(query: string): { test: (text: string) => boolean; invalid: boolean } {
+export function accessFilter(query: string): { test: (text: string) => boolean; invalid: boolean; slow?: boolean } {
   const q = query.trim();
   if (!q) return { test: () => true, invalid: false };
   const plain = (text: string) => text.toLowerCase().includes(q.toLowerCase());
-  if (SLOW_REGEX.test(q)) return { test: plain, invalid: true };
+  if (slowRegex(q)) return { test: plain, invalid: true, slow: true };
   try {
     const re = new RegExp(q, "i");
     return { test: (text) => re.test(text), invalid: false };
@@ -157,16 +160,25 @@ function FilterField({
   value,
   onChange,
   placeholder,
-  invalid,
+  filter,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
-  invalid: boolean;
+  filter: { invalid: boolean; slow?: boolean };
 }) {
   return (
-    <Field label={label} hint={invalid ? "Not a valid regex. Matching as plain text." : "Plain text and regex both work, for example ^(?!QA)."}>
+    <Field
+      label={label}
+      hint={
+        filter.slow
+          ? "This regex can freeze the page. Matching as plain text."
+          : filter.invalid
+            ? "Not a valid regex. Matching as plain text."
+            : "Plain text and regex both work, for example ^(?!QA)."
+      }
+    >
       <TextInput
         value={value}
         maxLength={ACCESS_FILTER_MAX}
@@ -475,6 +487,7 @@ function AccessList({
   const shown = rows.filter((r) => filter.test(`${r.agent.name} to ${r.scope.name}`));
   const combos = agents.length * scopes.length;
   const different = rows.filter((r) => r.differs).length;
+  const waiting = rows.filter((r) => r.cell?.action).length;
 
   const listHead = useRef<HTMLHeadingElement>(null);
   const change = async (agent: string, scope: string, level: AccessLevelId, who: string, done: string) => {
@@ -488,6 +501,7 @@ function AccessList({
     setBusy(null);
     // the row and its button may be gone: keep the keyboard in the list
     listHead.current?.focus();
+    return !failure;
   };
   const add = () => {
     const level = addLevel === NONE ? null : addLevel;
@@ -499,7 +513,8 @@ function AccessList({
       setMessage({ text: `${who} already has ${levelName(level)}.`, failed: false });
       return;
     }
-    void change(agent.id, scope.id, level, who, `${who}: ${levelName(level)}.`).then(() => {
+    void change(agent.id, scope.id, level, who, `${who}: ${levelName(level)}.`).then((ok) => {
+      if (!ok) return;
       setAddScope("");
       setAddLevel("");
     });
@@ -508,7 +523,7 @@ function AccessList({
   return (
     <div className="tb-access">
       <p className="tb-access-lede">
-        {`${count(agents.length, "agent", "agents")} and ${count(scopes.length, scopeWord.one, scopeWord.many)}: ${count(combos, "combination", "combinations")}. ${different === 0 ? "None differs from the default." : `${different.toLocaleString("en")} ${different === 1 ? "differs" : "differ"} from the default.`}`}
+        {`${count(agents.length, "agent", "agents")} and ${count(scopes.length, scopeWord.one, scopeWord.many)}: ${count(combos, "combination", "combinations")}. ${different === 0 ? "None differs from the default." : `${different.toLocaleString("en")} ${different === 1 ? "differs" : "differ"} from the default.`}${waiting > 0 ? ` ${waiting.toLocaleString("en")} waiting for your decision.` : ""}`}
       </p>
       <section className="tb-stack tb-access-part">
         <Heading ref={heading} tabIndex={-1} className="tb-access-head">
@@ -527,9 +542,7 @@ function AccessList({
         <Heading ref={listHead} tabIndex={-1} className="tb-access-head">
           What differs from the default
         </Heading>
-        {rows.length > 0 ? (
-          <FilterField label="Filter this list" value={query} onChange={setQuery} placeholder="Name, or a regex" invalid={filter.invalid} />
-        ) : null}
+        {rows.length > 0 ? <FilterField label="Filter this list" value={query} onChange={setQuery} placeholder="Name, or a regex" filter={filter} /> : null}
         {message ? (
           <Notice tone={message.failed ? "needs-you" : undefined} role={message.failed ? "alert" : "status"}>
             {message.text}
@@ -569,9 +582,12 @@ function AccessList({
               );
             })}
           </ul>
+          {shown.length > 0 && shown.length < rows.length && shown.length <= limit ? (
+            <p className="tb-access-more">{`The filter shows ${shown.length.toLocaleString("en")} of ${rows.length.toLocaleString("en")}.`}</p>
+          ) : null}
           {shown.length > limit ? (
             <div className="tb-access-more">
-              <span>{`Showing ${limit} of ${shown.length.toLocaleString("en")}.`}</span>
+              <span>{`Showing ${limit} of ${shown.length.toLocaleString("en")}${shown.length < rows.length ? ` that match; ${rows.length.toLocaleString("en")} in all` : ""}.`}</span>
               <Button onClick={() => setLimit((n) => n + PAGE)}>Show {Math.min(PAGE, shown.length - limit)} more</Button>
             </div>
           ) : null}
@@ -724,7 +740,7 @@ function AccessPicker({
   useEffect(() => {
     if (asking) document.getElementById(confirmId)?.focus();
   }, [asking, confirmId]);
-  useEffect(() => setAsking(null), [pickedAgents, pickedScopes]);
+  useEffect(() => setAsking(null), [pickedAgents, pickedScopes, cells]);
 
   return (
     <div className="tb-access">
@@ -744,7 +760,7 @@ function AccessPicker({
               value={agentQuery}
               onChange={setAgentQuery}
               placeholder="Name, or a regex"
-              invalid={agentFilter.invalid}
+              filter={agentFilter}
             />
             <div className="tb-access-tools">
               <Button onClick={() => setPickedAgents((s) => new Set([...s, ...shownAgents.map((a) => a.id)]))}>Select all shown</Button>
@@ -769,7 +785,7 @@ function AccessPicker({
               value={scopeQuery}
               onChange={setScopeQuery}
               placeholder="Name, or a regex"
-              invalid={scopeFilter.invalid}
+              filter={scopeFilter}
             />
             <div className="tb-access-tools">
               <Button aria-pressed={onlyAccess} className={cx(onlyAccess && "is-on")} onClick={() => setOnlyAccess((v) => !v)}>

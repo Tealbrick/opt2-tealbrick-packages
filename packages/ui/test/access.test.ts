@@ -74,6 +74,8 @@ test("filter: plain text, regex, negative lookahead; an invalid or slow regex fa
   const slow = accessFilter("(a+)+$");
   assert.equal(slow.invalid, true);
   assert.equal(slow.test("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"), false, "runs as plain text, no regex");
+  for (const q of ["(a|aa)+$", "^(([a-z])+.)+[A-Z]$", "(a*)*"]) assert.equal(accessFilter(q).slow, true, q);
+  for (const q of ["^(?!QA)", "(ab)+", "^QA (fleet|C380)", "fleet [0-9]+$"]) assert.equal(accessFilter(q).invalid, false, q);
 });
 
 test("bulk: a pair already at the level is not written; every other write runs with limited concurrency; failures come back per row", async () => {

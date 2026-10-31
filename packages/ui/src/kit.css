@@ -384,6 +384,7 @@ ul.tb-access-rows,
   border-bottom: var(--tb-hair) solid var(--tb-line);
 }
 .tb-access-more {
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
