@@ -106,16 +106,21 @@ export function filterCountText(shown: number, total: number, noun: FilterNoun, 
   return `Showing ${num(shown)} of ${num(total)}${more ? " loaded" : ""} ${nounOf(total, noun)}.`;
 }
 
-/** The sentence a paged list owes a client-side filter: it reads only what is loaded. */
-export function filterPagedText(loaded: number, noun: FilterNoun): string {
-  return `The filter searches only the ${num(loaded)} ${nounOf(loaded, noun)} loaded so far. More are not loaded yet, so a match can still be among them.`;
+/**
+ * The sentence a paged list owes a client-side filter: it reads only what is loaded. `canLoadMore` false: the page has no
+ * way to load more (the server cuts the list), and the sentence says so.
+ */
+export function filterPagedText(loaded: number, noun: FilterNoun, canLoadMore = true): string {
+  return canLoadMore
+    ? `The filter searches only the ${num(loaded)} ${nounOf(loaded, noun)} loaded so far. More are not loaded yet, so a match can still be among them.`
+    : `The filter searches only the ${num(loaded)} ${nounOf(loaded, noun)} this page holds. The list is cut there, so a match can still be among the older ones.`;
 }
 
 /** What to say when the filter leaves nothing. A paged list never says only "nothing": it says what was searched. */
-export function filterNothingText(loaded: number, noun: FilterNoun, more: boolean): string {
+export function filterNothingText(loaded: number, noun: FilterNoun, more: boolean, canLoadMore = true): string {
   if (loaded === 0 && !more) return `No ${noun.one} matches this filter.`;
   return more
-    ? `No loaded ${noun.one} matches. ${filterPagedText(loaded, noun)}`
+    ? `No loaded ${noun.one} matches. ${filterPagedText(loaded, noun, canLoadMore)}`
     : `No ${noun.one} matches. The filter searched all ${num(loaded)} ${nounOf(loaded, noun)}.`;
 }
 
@@ -146,7 +151,7 @@ export type ListFilterProps = {
   onClear: () => void;
   /** the rows are loading (a new server filter): no count and no "nothing" until they are here */
   busy?: boolean;
-  /** the page's own "Show older" action, offered again when nothing matches among the loaded rows */
+  /** the page's own "Show older" action: offered beside the count while the filter reads only the loaded rows, so it is in reach with or without a match. Omit it when the page cannot load more: the sentence then says the list is cut. */
   onLoadMore?: () => void;
   loadMoreLabel?: string;
   loadingMore?: boolean;
@@ -201,7 +206,12 @@ export function ListFilter({
         ) : on ? (
           <>
             <span>{filterCountText(shown, total, noun, more)}</span>
-            {partial ? <span>{filterPagedText(total, noun)}</span> : null}
+            {partial ? <span>{filterPagedText(total, noun, onLoadMore !== undefined)}</span> : null}
+            {partial && onLoadMore ? (
+              <Button onClick={onLoadMore} disabled={loadingMore}>
+                {loadMoreLabel}
+              </Button>
+            ) : null}
             <Button onClick={onClear}>Clear filter</Button>
           </>
         ) : null}
@@ -209,12 +219,7 @@ export function ListFilter({
       {on && !busy && shown === 0 ? (
         <Notice tone="needs-you">
           <span className="tb-row">
-            <span>{filterNothingText(total, noun, partial)}</span>
-            {partial && onLoadMore ? (
-              <Button onClick={onLoadMore} disabled={loadingMore}>
-                {loadMoreLabel}
-              </Button>
-            ) : null}
+            <span>{filterNothingText(total, noun, partial, onLoadMore !== undefined)}</span>
           </span>
         </Notice>
       ) : null}

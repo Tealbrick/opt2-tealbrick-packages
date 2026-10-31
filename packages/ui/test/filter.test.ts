@@ -196,3 +196,22 @@ test("while rows load for a new server filter the bar says Loading and does not 
   assert.doesNotMatch(text, /No receipt matches/);
   await m.unmount();
 });
+
+test("a paged filter with matches keeps Show older beside the count; a cut list without it says the list is cut", async () => {
+  const { ListFilter, listFilter } = await ui();
+  let more = 0;
+  const props = { label: "Filter", value: "a", onChange: () => {}, filter: listFilter("a"), noun: NOUN, shown: 3, total: 100, more: true, onClear: () => {} };
+  const m = await mount(h(ListFilter, { ...props, onLoadMore: () => more++ }));
+  assert.match(m.root.textContent ?? "", /Showing 3 of 100 loaded receipts\./);
+  await click([...m.root.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Show older") as HTMLButtonElement);
+  assert.equal(more, 1);
+  await m.unmount();
+  const cut = await mount(h(ListFilter, props));
+  const text = cut.root.textContent ?? "";
+  assert.match(text, /this page holds\. The list is cut there/);
+  assert.equal([...cut.root.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Show older").length, 0);
+  await cut.unmount();
+  const none = await mount(h(ListFilter, { ...props, shown: 0 }));
+  assert.match(none.root.textContent ?? "", /No loaded receipt matches\. The filter searches only the 100 receipts this page holds\./);
+  await none.unmount();
+});
