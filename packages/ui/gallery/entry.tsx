@@ -1,9 +1,10 @@
 /* Kit gallery: every @opt2-tealbrick/ui export in its states, rendered from the BUILT package (dist), so the rendered
    checks (scripts/check-rendered.ts: contrast in every state, scrollbars, ink centring) test what consumers install.
-   Views: ?view=access | components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table */
+   Views: ?view=access | access-one | components (default) | shell-app[&app=<id>] | shell | dialog | stepflow[&step=N] | toast | reading | table */
 import { type ReactNode, StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  AccessBulk,
   AccessEditor,
   AppHeader,
   AppIcon,
@@ -711,7 +712,83 @@ function AccessView() {
   );
 }
 
+/* AccessEditor and AccessBulk for one scope (C382 batch 2): a team, and one value for many with a form and hints. ?step=many opens the picker, ?step=owner has 40 values. */
+function AccessOneView() {
+  const big = q.get("big") === "1";
+  const step = q.get("step");
+  const agents = Array.from({ length: big ? 40 : 6 }, (_, i) => ({ id: `a${i}`, name: i === 0 ? "Henry" : `QA fleet ${i}`, note: i % 2 ? "Agent" : "Person" }));
+  const [cells, setCells] = useState<{ agent: string; scope: string; level: string }[]>([{ agent: "a0", scope: "s", level: "lead" }]);
+  const write = async (c: { agent: string; scope: string; level: string | null }) => {
+    setCells((old) => [...old.filter((x) => x.agent !== c.agent), ...(c.level === null ? [] : [{ agent: c.agent, scope: c.scope, level: c.level }])]);
+  };
+  useEffect(() => {
+    if (step === "many")
+      ([...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Add or change many") as HTMLButtonElement | undefined)?.click();
+  }, [step]);
+  if (step === "owner" || step === "level") {
+    const owner = step === "owner";
+    const levels = owner
+      ? Array.from({ length: big ? 40 : 10 }, (_, i) => ({ id: `p${i}`, label: i === 0 ? "Martin" : `QA person ${i}` }))
+      : ["Nothing", "Read only", "Read and change", "Also outward", "Also money", "Everything"].map((label, i) => ({
+          id: String(i),
+          label,
+          hint: "One line that says what this level allows, long enough to wrap in a narrow column.",
+        }));
+    return (
+      <main className="tb-root" data-gallery="access" style={{ padding: "var(--tb-s4)" }}>
+        <AccessBulk
+          agents={agents}
+          scope={{ id: "s", name: "Access" }}
+          levels={levels}
+          allowNone={owner}
+          noneLabel={owner ? "No owner" : "Not set"}
+          cells={cells}
+          write={write}
+          reload={async () => cells}
+          explain={(e) => (e as Error).message}
+          storageKey={`gallery-access-${step}`}
+          title={owner ? "Change the owner of many agents" : "Set a level on many agents"}
+          backLabel="Back to the list"
+          onBack={() => {}}
+          panel={owner ? undefined : <Notice tone="neutral">Each agent keeps what happens beyond the level, its apps and its tools.</Notice>}
+        />
+      </main>
+    );
+  }
+  return (
+    <main className="tb-root" data-gallery="access" style={{ padding: "var(--tb-s4)" }}>
+      <AccessEditor
+        agents={agents}
+        scopes={[{ id: "s", name: "Support" }]}
+        fixedScope
+        levels={[
+          { id: "member", label: "Member" },
+          { id: "lead", label: "Lead" },
+        ]}
+        noneLabel="Not in team"
+        scopeWord={{ one: "team", many: "teams" }}
+        defaults={[{ what: "Everyone", level: null }]}
+        cells={cells}
+        defaultOf={() => null}
+        writeMany={async (changes) => {
+          for (const c of changes) await write(c);
+        }}
+        reload={async () => cells}
+        explain={(e) => (e as Error).message}
+        storageKey="gallery-access-one"
+        words={{
+          agent: { one: "person or agent", many: "people and agents" },
+          differHead: "In this team",
+          back: "Remove from team",
+          lede: (n, d) => `${n} people and agents. ${d} in this team.`,
+        }}
+      />
+    </main>
+  );
+}
+
 function App() {
+  if (view === "access-one") return <AccessOneView />;
   if (view === "access") return <AccessView />;
   if (view === "table") return <TableView />;
   if (view === "reading") return <ReadingView />;

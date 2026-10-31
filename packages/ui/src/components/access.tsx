@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "./button.tsx";
 import { Field, TextInput } from "./field.tsx";
 import { cx } from "./ink.tsx";
@@ -12,7 +12,7 @@ import { Notice } from "./surfaces.tsx";
 
 /** A level the app declares. `null` means no access in every prop that takes a level. */
 export type AccessLevelId = string | null;
-export type AccessOption = { id: string; label: string };
+export type AccessOption = { id: string; label: string /** one line beside the button, what this value does */; hint?: string };
 export type AccessAgent = { id: string; name: string /** short words after the name, e.g. "paused" */; note?: string };
 export type AccessScope = { id: string; name: string };
 /** A decision the app offers on one cell, e.g. Allow on what an update adds. It is shown also when the level equals the default. */
@@ -84,7 +84,8 @@ export function accessFilter(query: string): { test: (text: string) => boolean; 
 }
 
 export type AccessChange = { agent: string; scope: string; level: AccessLevelId };
-export type AccessFailure = AccessChange & { reason: string };
+/** `notTried`: the writes stopped before this one, so it was not sent. */
+export type AccessFailure = AccessChange & { reason: string; notTried?: boolean };
 const ACCESS_WRITE_LIMIT = 4;
 
 /** The writes of one click. A pair already at the level is skipped: a write would also change who owns that row. */
@@ -95,29 +96,50 @@ export function accessChanges(agents: readonly string[], scopes: readonly string
   return out;
 }
 
-/** Runs the writes with limited concurrency, and returns every write that failed. One failure stops no other write. */
+/** The sign-in ended: every write after this one fails the same way, so the rest is not tried. An app with other such codes passes its own test. */
+export function accessSessionEnded(error: unknown): boolean {
+  const e = (error ?? {}) as { code?: unknown; httpStatus?: unknown };
+  return (
+    e.httpStatus === 401 ||
+    e.code === "session_required" ||
+    e.code === "csrf_invalid" ||
+    e.code === "ticket_invalid" ||
+    e.code === "ticket_used" ||
+    e.code === "unauthenticated"
+  );
+}
+
+/**
+ * Runs the writes with limited concurrency, and returns every write that failed. One failure stops no other write, except
+ * a failure of the sign-in: then the rest comes back as `notTried` and is not sent. A write in progress still finishes.
+ */
 export async function accessWriteAll(
   changes: readonly AccessChange[],
   write: (change: AccessChange) => Promise<unknown>,
   reasonOf: (error: unknown) => string,
   progress?: (done: number) => void,
   limit: number = ACCESS_WRITE_LIMIT,
+  stopOn: (error: unknown) => boolean = accessSessionEnded,
 ): Promise<AccessFailure[]> {
   const failed: AccessFailure[] = [];
   let next = 0;
   let done = 0;
+  let stop: string | null = null;
   const worker = async () => {
-    while (next < changes.length) {
+    while (next < changes.length && stop === null) {
       const change = changes[next++] as AccessChange;
       try {
         await write(change);
       } catch (error) {
-        failed.push({ ...change, reason: reasonOf(error) });
+        const reason = reasonOf(error);
+        failed.push({ ...change, reason });
+        if (stopOn(error)) stop = reason;
       }
       progress?.(++done);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, changes.length) }, worker));
+  if (stop !== null) for (const change of changes.slice(next)) failed.push({ ...change, reason: stop, notTried: true });
   return failed;
 }
 
@@ -131,7 +153,7 @@ export function accessUnconfirmed(changes: readonly AccessChange[], failed: read
 }
 
 /** Browser storage can throw or be empty (private window, blocked site data): a filter is only a convenience. */
-function usePersistedFilter(storageKey: string): [string, (value: string) => void] {
+export function useAccessFilter(storageKey: string): [string, (value: string) => void] {
   const [value, setValue] = useState(() => {
     try {
       return (globalThis.localStorage?.getItem(storageKey) ?? "").slice(0, ACCESS_FILTER_MAX);
@@ -155,7 +177,8 @@ function usePersistedFilter(storageKey: string): [string, (value: string) => voi
 
 const count = (n: number, one: string, many: string) => `${n.toLocaleString("en")} ${n === 1 ? one : many}`;
 
-function FilterField({
+/** The filter field of the kit: plain text or a regex, and it says when a text cannot run as a regex. */
+export function AccessFilterField({
   label,
   value,
   onChange,
@@ -301,33 +324,86 @@ function CellExtra({
   );
 }
 
-type LogEntry = { id: number; text: string; failures: { who: string; reason: string }[] };
+type LogEntry = { id: number; text: string; failures: { who: string; reason: string }[]; notTried: number };
 
-export type AccessEditorProps = {
+/** A page's own words where the default words say something else. */
+export type AccessWords = {
+  /** The people picked in the first column, "agent" / "agents" when left out. */
+  agent?: { one: string; many: string };
+  /** What one write sets, "permission" / "permissions" when left out. */
+  unit?: { one: string; many: string };
+  /** The heading of the column with the levels, "Set access" when left out. */
+  set?: string;
+  /** Under the log while it is empty. */
+  start?: string;
+  /** The opening view: heading of the list, its text while empty, and the button that goes back to the default. */
+  differHead?: string;
+  differEmpty?: string;
+  back?: string;
+  /** What the picks will do, after their names: "This sets 3 permissions." when left out. */
+  sentence?: (n: number) => string;
+  /** The first line of the opening view. */
+  lede?: (total: number, differ: number) => string;
+  /** The question above the confirmation limit, and the line when nothing has to change. */
+  ask?: (n: number, level: string) => string;
+  nothing?: (n: number, level: string) => string;
+};
+
+type Word = { one: string; many: string };
+
+type WriteProps = {
   agents: readonly AccessAgent[];
-  scopes: readonly AccessScope[];
   /** The app's levels in their order, from tealbrick.manifest.json. No access is added by the kit. */
   levels: readonly AccessOption[];
   noneLabel?: string;
-  /** "project" / "projects" */
-  scopeWord: { one: string; many: string };
-  /** The defaults, shown read only. */
-  defaults: readonly AccessDefaultLine[];
+  /** False when a page must not offer "no access" in bulk: then the level `null` has no button. */
+  allowNone?: boolean;
   cells: readonly AccessCell[];
-  /** What the default rule gives this agent on this scope. */
-  defaultOf: (agent: string, scope: string) => AccessLevelId;
   /** The app's existing per-cell write. */
-  write: (change: AccessChange) => Promise<unknown>;
+  write?: (change: AccessChange) => Promise<unknown>;
+  /** For an op that replaces a whole list: ONE call for the changes of one click. It wins over `write`, and it gets no limit, because there is one call. */
+  writeMany?: (changes: readonly AccessChange[]) => Promise<unknown>;
   /** Reads the rows again and returns them. */
   reload: () => Promise<readonly AccessCell[]>;
   explain: (error: unknown) => string;
   /** Prefix of what this browser remembers, unique per app. */
   storageKey: string;
   headingLevel?: 2 | 3;
+  words?: AccessWords;
+};
+
+export type AccessEditorProps = WriteProps & {
+  scopes: readonly AccessScope[];
+  /** "project" / "projects" */
+  scopeWord: { one: string; many: string };
+  /** The defaults, shown read only. */
+  defaults: readonly AccessDefaultLine[];
+  /** What the default rule gives this agent on this scope. */
+  defaultOf: (agent: string, scope: string) => AccessLevelId;
+  /** The page is about one scope, the only one in `scopes`: no scope column, no scope field, no "to" in the rows. */
+  fixedScope?: boolean;
+};
+
+/** The bulk editor alone, for one scope: pick many, then one value. */
+export type AccessBulkProps = WriteProps & {
+  /** What the page sets, such as one role or one setting. Every cell and change carries its id. */
+  scope: AccessScope;
+  title: string;
+  backLabel: string;
+  onBack: () => void;
+  /** Above the level buttons: a form or a warning the choice needs. */
+  panel?: ReactNode;
+  /** Why no level can be used yet, such as a missing field. */
+  blocked?: string | null;
+  /** The word after a name in the first column for its current level, the level name when left out. */
+  nowText?: (level: AccessLevelId) => string;
 };
 
 const CONFIRM_ABOVE = 25;
 const PAGE = 50;
+const NO_WORDS: AccessWords = {};
+const AGENT_WORD: Word = { one: "agent", many: "agents" };
+const UNIT_WORD: Word = { one: "permission", many: "permissions" };
 
 /** Duplicate names stay apart: "Henry work" and "Henry work (2)". */
 function apart<T extends { id: string; name: string }>(list: readonly T[]): T[] {
@@ -339,39 +415,47 @@ function apart<T extends { id: string; name: string }>(list: readonly T[]): T[] 
   });
 }
 
-/** Agents and scopes: the defaults once, then only what differs; the bulk editor opens from Add. */
-export function AccessEditor(props: AccessEditorProps) {
-  const { levels, noneLabel = "No access", scopeWord, cells, defaultOf, write, reload, explain, defaults, storageKey, headingLevel = 2 } = props;
-  const agents = useMemo(() => apart(props.agents), [props.agents]);
-  const scopes = useMemo(() => apart(props.scopes), [props.scopes]);
-  const [view, setView] = useState<"list" | "many">("list");
+/** Writes, reads back, says what really happened, and keeps the log of this session. */
+function useAccessWrites(
+  agents: readonly AccessAgent[],
+  scopes: readonly AccessScope[],
+  fixedScope: boolean,
+  { write, writeMany, reload, explain }: Pick<WriteProps, "write" | "writeMany" | "reload" | "explain">,
+) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const logId = useRef(0);
-  const Heading = headingLevel === 3 ? "h3" : "h2";
-  const levelName = useCallback(
-    (level: AccessLevelId) => (level === null ? noneLabel : (levels.find((l) => l.id === level)?.label ?? level)),
-    [levels, noneLabel],
-  );
   const agentName = useCallback((id: string) => agents.find((a) => a.id === id)?.name ?? id, [agents]);
   const scopeName = useCallback((id: string) => scopes.find((s) => s.id === id)?.name ?? id, [scopes]);
-  const rows = useMemo(() => accessDifferences(agents, scopes, cells, defaultOf), [agents, scopes, cells, defaultOf]);
+  const whoOf = useCallback(
+    (agent: string, scope: string) => (fixedScope ? agentName(agent) : `${agentName(agent)} to ${scopeName(scope)}`),
+    [agentName, scopeName, fixedScope],
+  );
   const addLog = useCallback(
     (text: string, failures: AccessFailure[]) => {
       logId.current += 1;
       const entry: LogEntry = {
         id: logId.current,
         text,
-        failures: failures.map((f) => ({ who: `${agentName(f.agent)} to ${scopeName(f.scope)}`, reason: f.reason })),
+        failures: failures.filter((f) => !f.notTried).map((f) => ({ who: whoOf(f.agent, f.scope), reason: f.reason })),
+        notTried: failures.filter((f) => f.notTried).length,
       };
       setLog((l) => [entry, ...l]);
     },
-    [agentName, scopeName],
+    [whoOf],
   );
-
-  /** Writes, reads back, says what really happened, and returns the failures. */
   const apply = useCallback(
     async (changes: AccessChange[], progress?: (done: number) => void): Promise<AccessFailure[]> => {
-      const failed = await accessWriteAll(changes, write, explain, progress);
+      let failed: AccessFailure[] = [];
+      if (writeMany) {
+        try {
+          await writeMany(changes);
+        } catch (e) {
+          const reason = explain(e);
+          failed = changes.map((c) => ({ ...c, reason }));
+        }
+        progress?.(changes.length);
+      } else if (write) failed = await accessWriteAll(changes, write, explain, progress);
+      else failed = changes.map((c) => ({ ...c, reason: "This page cannot change this." }));
       let fresh: readonly AccessCell[] | null = null;
       try {
         fresh = await reload();
@@ -382,8 +466,38 @@ export function AccessEditor(props: AccessEditorProps) {
       }
       return [...failed, ...accessUnconfirmed(changes, failed, fresh)];
     },
-    [write, explain, reload],
+    [write, writeMany, explain, reload],
   );
+  return { log, addLog, apply, whoOf };
+}
+
+/** Agents and scopes: the defaults once, then only what differs; the bulk editor opens from Add. */
+export function AccessEditor(props: AccessEditorProps) {
+  const {
+    levels,
+    noneLabel = "No access",
+    allowNone = true,
+    scopeWord,
+    cells,
+    defaultOf,
+    explain,
+    reload,
+    defaults,
+    storageKey,
+    headingLevel = 2,
+    fixedScope = false,
+    words = NO_WORDS,
+  } = props;
+  const agents = useMemo(() => apart(props.agents), [props.agents]);
+  const scopes = useMemo(() => apart(props.scopes), [props.scopes]);
+  const [view, setView] = useState<"list" | "many">("list");
+  const { log, addLog, apply, whoOf } = useAccessWrites(agents, scopes, fixedScope, props);
+  const Heading = headingLevel === 3 ? "h3" : "h2";
+  const levelName = useCallback(
+    (level: AccessLevelId) => (level === null ? noneLabel : (levels.find((l) => l.id === level)?.label ?? level)),
+    [levels, noneLabel],
+  );
+  const rows = useMemo(() => accessDifferences(agents, scopes, cells, defaultOf), [agents, scopes, cells, defaultOf]);
 
   const heading = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
@@ -395,46 +509,85 @@ export function AccessEditor(props: AccessEditorProps) {
     heading.current?.focus();
   }, [view]);
 
-  if (view === "many") {
-    return (
-      <AccessPicker
-        agents={agents}
-        scopes={scopes}
-        levels={levels}
-        levelName={levelName}
-        scopeWord={scopeWord}
-        cells={cells}
-        apply={apply}
-        addLog={addLog}
-        log={log}
-        explain={explain}
-        reload={reload}
-        storageKey={storageKey}
-        Heading={Heading}
-        heading={heading}
-        onBack={() => setView("list")}
-      />
-    );
-  }
+  const shared: Shared = {
+    agents,
+    scopes,
+    levels,
+    allowNone,
+    fixedScope,
+    words,
+    levelName,
+    scopeWord,
+    cells,
+    apply,
+    addLog,
+    log,
+    whoOf,
+    explain,
+    reload,
+    storageKey,
+    Heading,
+    heading,
+  };
+  if (view === "many") return <AccessPicker {...shared} title="Add or change many" backLabel="Back to the list" onBack={() => setView("list")} />;
+  return <AccessList {...shared} noneLabel={noneLabel} defaults={defaults} rows={rows} onMany={() => setView("many")} />;
+}
+
+/** The bulk editor alone: the first column picks many, the last gives one click per value, and the log says what happened. */
+export function AccessBulk(props: AccessBulkProps) {
+  const {
+    levels,
+    noneLabel = "No access",
+    allowNone = true,
+    scope,
+    cells,
+    explain,
+    reload,
+    storageKey,
+    headingLevel = 2,
+    words = NO_WORDS,
+    title,
+    backLabel,
+    onBack,
+    panel,
+    blocked,
+    nowText,
+  } = props;
+  const agents = useMemo(() => apart(props.agents), [props.agents]);
+  const scopes = useMemo(() => [scope], [scope]);
+  const { log, addLog, apply, whoOf } = useAccessWrites(agents, scopes, true, props);
+  const levelName = useCallback(
+    (level: AccessLevelId) => (level === null ? noneLabel : (levels.find((l) => l.id === level)?.label ?? level)),
+    [levels, noneLabel],
+  );
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), []);
   return (
-    <AccessList
+    <AccessPicker
       agents={agents}
       scopes={scopes}
       levels={levels}
-      noneLabel={noneLabel}
+      allowNone={allowNone}
+      fixedScope
+      words={words}
       levelName={levelName}
-      scopeWord={scopeWord}
-      defaults={defaults}
-      rows={rows}
+      scopeWord={{ one: scope.name, many: scope.name }}
       cells={cells}
       apply={apply}
       addLog={addLog}
+      log={log}
+      whoOf={whoOf}
       explain={explain}
       reload={reload}
       storageKey={storageKey}
-      Heading={Heading}
+      Heading={headingLevel === 3 ? "h3" : "h2"}
       heading={heading}
-      onMany={() => setView("many")}
+      title={title}
+      backLabel={backLabel}
+      onBack={onBack}
+      panel={panel}
+      blocked={blocked}
+      nowText={nowText}
     />
   );
 }
@@ -443,11 +596,16 @@ type Shared = {
   agents: readonly AccessAgent[];
   scopes: readonly AccessScope[];
   levels: readonly AccessOption[];
+  allowNone: boolean;
+  fixedScope: boolean;
+  words: AccessWords;
   levelName: (level: AccessLevelId) => string;
   scopeWord: { one: string; many: string };
   cells: readonly AccessCell[];
   apply: (changes: AccessChange[], progress?: (done: number) => void) => Promise<AccessFailure[]>;
   addLog: (text: string, failures: AccessFailure[]) => void;
+  log: readonly LogEntry[];
+  whoOf: (agent: string, scope: string) => string;
   explain: (error: unknown) => string;
   reload: () => Promise<readonly AccessCell[]>;
   storageKey: string;
@@ -456,11 +614,43 @@ type Shared = {
 };
 
 const NONE = "__none";
+const capital = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+
+/** A failure log has an end: after a bad write to 192 scopes the page stays readable, and it says how many it does not show. */
+export const ACCESS_FAILURES_SHOWN = 20;
+
+function SessionLog({ log, empty }: { log: readonly LogEntry[]; empty?: string }) {
+  return (
+    <>
+      <p className="tb-label">{`Changes this session (${log.length})`}</p>
+      {log.length === 0 && empty ? <p className="tb-access-note">{empty}</p> : null}
+      {log.map((entry) => (
+        <div className="tb-access-log" key={entry.id}>
+          <span>{entry.text}</span>
+          {entry.failures.length > 0 || entry.notTried > 0 ? (
+            <ul className="tb-access-failures">
+              {entry.failures.slice(0, ACCESS_FAILURES_SHOWN).map((f) => (
+                <li key={f.who}>{`Failed: ${f.who}. ${f.reason}`}</li>
+              ))}
+              {entry.failures.length > ACCESS_FAILURES_SHOWN ? (
+                <li>{`And ${(entry.failures.length - ACCESS_FAILURES_SHOWN).toLocaleString("en")} more failed.`}</li>
+              ) : null}
+              {entry.notTried > 0 ? <li>{`${entry.notTried.toLocaleString("en")} not tried: the writes stopped.`}</li> : null}
+            </ul>
+          ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
 
 function AccessList({
   agents,
   scopes,
   levels,
+  allowNone,
+  fixedScope,
+  words,
   noneLabel,
   levelName,
   scopeWord,
@@ -469,6 +659,8 @@ function AccessList({
   cells,
   apply,
   addLog,
+  log,
+  whoOf,
   explain,
   reload,
   storageKey,
@@ -476,15 +668,18 @@ function AccessList({
   heading,
   onMany,
 }: Shared & { noneLabel: string; defaults: readonly AccessDefaultLine[]; rows: AccessRow[]; onMany: () => void }) {
-  const [query, setQuery] = usePersistedFilter(`${storageKey}:rows`);
+  const [query, setQuery] = useAccessFilter(`${storageKey}:rows`);
   const [limit, setLimit] = useState(PAGE);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [addAgent, setAddAgent] = useState("");
   const [addScope, setAddScope] = useState("");
   const [addLevel, setAddLevel] = useState("");
+  const agentWord = words.agent ?? AGENT_WORD;
+  const onlyScope = fixedScope ? scopes[0]?.id : undefined;
+  const scopeForAdd = onlyScope ?? addScope;
   const filter = accessFilter(query);
-  const shown = rows.filter((r) => filter.test(`${r.agent.name} to ${r.scope.name}`));
+  const shown = rows.filter((r) => filter.test(whoOf(r.agent.id, r.scope.id)));
   const combos = agents.length * scopes.length;
   const different = rows.filter((r) => r.differs).length;
   const waiting = rows.filter((r) => r.cell?.action).length;
@@ -506,24 +701,28 @@ function AccessList({
   const add = () => {
     const level = addLevel === NONE ? null : addLevel;
     const agent = agents.find((a) => a.id === addAgent);
-    const scope = scopes.find((s) => s.id === addScope);
+    const scope = scopes.find((s) => s.id === scopeForAdd);
     if (!agent || !scope || !addLevel) return;
-    const who = `${agent.name} to ${scope.name}`;
+    const who = whoOf(agent.id, scope.id);
     if (accessChanges([agent.id], [scope.id], level, cells).length === 0) {
       setMessage({ text: `${who} already has ${levelName(level)}.`, failed: false });
       return;
     }
     void change(agent.id, scope.id, level, who, `${who}: ${levelName(level)}.`).then((ok) => {
       if (!ok) return;
+      if (fixedScope) setAddAgent("");
       setAddScope("");
       setAddLevel("");
     });
   };
-  const levelOptions = [{ value: NONE, label: noneLabel }, ...levels.map((l) => ({ value: l.id, label: l.label }))];
+  const levelOptions = [...(allowNone ? [{ value: NONE, label: noneLabel }] : []), ...levels.map((l) => ({ value: l.id, label: l.label }))];
+  const backLabel = words.back ?? "Back to default";
   return (
     <div className="tb-access">
       <p className="tb-access-lede">
-        {`${count(agents.length, "agent", "agents")} and ${count(scopes.length, scopeWord.one, scopeWord.many)}: ${count(combos, "combination", "combinations")}. ${different === 0 ? "None differs from the default." : `${different.toLocaleString("en")} ${different === 1 ? "differs" : "differ"} from the default.`}${waiting > 0 ? ` ${waiting.toLocaleString("en")} waiting for your decision.` : ""}`}
+        {words.lede
+          ? words.lede(agents.length, different)
+          : `${count(agents.length, agentWord.one, agentWord.many)} and ${count(scopes.length, scopeWord.one, scopeWord.many)}: ${count(combos, "combination", "combinations")}. ${different === 0 ? "None differs from the default." : `${different.toLocaleString("en")} ${different === 1 ? "differs" : "differ"} from the default.`}${waiting > 0 ? ` ${waiting.toLocaleString("en")} waiting for your decision.` : ""}`}
       </p>
       <section className="tb-stack tb-access-part">
         <Heading ref={heading} tabIndex={-1} className="tb-access-head">
@@ -540,16 +739,18 @@ function AccessList({
       </section>
       <section className="tb-stack tb-access-part">
         <Heading ref={listHead} tabIndex={-1} className="tb-access-head">
-          What differs from the default
+          {words.differHead ?? "What differs from the default"}
         </Heading>
-        {rows.length > 0 ? <FilterField label="Filter this list" value={query} onChange={setQuery} placeholder="Name, or a regex" filter={filter} /> : null}
+        {rows.length > 0 ? (
+          <AccessFilterField label="Filter this list" value={query} onChange={setQuery} placeholder="Name, or a regex" filter={filter} />
+        ) : null}
         {message ? (
           <Notice tone={message.failed ? "needs-you" : undefined} role={message.failed ? "alert" : "status"}>
             {message.text}
           </Notice>
         ) : null}
         <div className="tb-access-rows">
-          {rows.length === 0 ? <p className="tb-access-empty">Every agent has the default.</p> : null}
+          {rows.length === 0 ? <p className="tb-access-empty">{words.differEmpty ?? "Every agent has the default."}</p> : null}
           {rows.length > 0 && shown.length === 0 ? (
             <div className="tb-access-empty tb-row">
               <span>{`The filter hides all ${count(rows.length, "row", "rows")}.`}</span>
@@ -558,23 +759,31 @@ function AccessList({
           ) : null}
           <ul className="tb-access-list-plain">
             {shown.slice(0, limit).map((r) => {
-              const who = `${r.agent.name} to ${r.scope.name}`;
+              const who = whoOf(r.agent.id, r.scope.id);
               return (
                 <li key={key(r.agent.id, r.scope.id)} className="tb-access-row">
                   <span className="tb-access-who">
                     {r.agent.name}
                     {r.agent.note ? <span className="tb-access-pick-meta">{` ${r.agent.note}`}</span> : null}
                   </span>
-                  <span className="tb-access-to">to</span>
-                  <span className="tb-access-what">{r.scope.name}</span>
+                  {fixedScope ? null : <span className="tb-access-to">to</span>}
+                  {fixedScope ? null : <span className="tb-access-what">{r.scope.name}</span>}
                   <span className="tb-access-level">{levelName(r.level)}</span>
                   {r.differs ? (
                     <Button
                       disabled={busy !== null}
-                      aria-label={`Back to default: ${who}`}
-                      onClick={() => void change(r.agent.id, r.scope.id, r.defaultLevel, who, `${who} is back to the default, ${levelName(r.defaultLevel)}.`)}
+                      aria-label={`${backLabel}: ${who}`}
+                      onClick={() =>
+                        void change(
+                          r.agent.id,
+                          r.scope.id,
+                          r.defaultLevel,
+                          who,
+                          fixedScope ? `${who}: ${levelName(r.defaultLevel)}.` : `${who} is back to the default, ${levelName(r.defaultLevel)}.`,
+                        )
+                      }
                     >
-                      Back to default
+                      {backLabel}
                     </Button>
                   ) : null}
                   <CellExtra cell={r.cell} who={who} explain={explain} reload={reload} />
@@ -595,32 +804,41 @@ function AccessList({
             <span className="tb-label">Add</span>
             <div className="tb-access-add-field">
               <Select
-                aria-label="Agent"
-                placeholder="Agent"
+                aria-label={capital(agentWord.one)}
+                placeholder={capital(agentWord.one)}
                 options={agents.map((a) => ({ value: a.id, label: a.name }))}
                 value={addAgent}
                 onValueChange={setAddAgent}
               />
             </div>
-            <span className="tb-access-to">to</span>
-            <div className="tb-access-add-field tb-access-add-wide">
-              <Select
-                aria-label={scopeWord.one}
-                placeholder={`${scopeWord.one.charAt(0).toUpperCase()}${scopeWord.one.slice(1)}`}
-                options={scopes.map((s) => ({ value: s.id, label: s.name }))}
-                value={addScope}
-                onValueChange={setAddScope}
-              />
-            </div>
+            {fixedScope ? null : (
+              <>
+                <span className="tb-access-to">to</span>
+                <div className="tb-access-add-field tb-access-add-wide">
+                  <Select
+                    aria-label={scopeWord.one}
+                    placeholder={capital(scopeWord.one)}
+                    options={scopes.map((s) => ({ value: s.id, label: s.name }))}
+                    value={addScope}
+                    onValueChange={setAddScope}
+                  />
+                </div>
+              </>
+            )}
             <div className="tb-access-add-field">
               <Select aria-label="Access" placeholder="Access" options={levelOptions} value={addLevel} onValueChange={setAddLevel} />
             </div>
-            <Button variant="primary" disabled={busy !== null || !addAgent || !addScope || !addLevel} onClick={add}>
+            <Button variant="primary" disabled={busy !== null || !addAgent || !scopeForAdd || !addLevel} onClick={add}>
               Add
             </Button>
             <Button onClick={onMany}>Add or change many</Button>
           </div>
         </div>
+        {log.length > 0 ? (
+          <div className="tb-access-rows tb-access-log-box">
+            <SessionLog log={log} />
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -633,26 +851,38 @@ function names(ids: readonly string[], nameOf: (id: string) => string, one: stri
 }
 
 const ACTIONS_SHOWN = 20;
+/** Above this many values the value column gets its own filter and scrolls, such as the people who can own an agent. */
+const LEVELS_FILTER_ABOVE = 8;
 
 function AccessPicker({
   agents,
   scopes,
   levels,
+  allowNone,
+  fixedScope,
+  words,
   levelName,
   scopeWord,
   cells,
   apply,
   addLog,
   log,
+  whoOf,
   explain,
   reload,
   storageKey,
   Heading,
   heading,
+  title,
+  backLabel,
   onBack,
-}: Shared & { log: readonly LogEntry[]; onBack: () => void }) {
-  const [agentQuery, setAgentQuery] = usePersistedFilter(`${storageKey}:agents`);
-  const [scopeQuery, setScopeQuery] = usePersistedFilter(`${storageKey}:scopes`);
+  panel,
+  blocked,
+  nowText,
+}: Shared & { title: string; backLabel: string; onBack: () => void; panel?: ReactNode; blocked?: string | null; nowText?: (level: AccessLevelId) => string }) {
+  const [agentQuery, setAgentQuery] = useAccessFilter(`${storageKey}:agents`);
+  const [scopeQuery, setScopeQuery] = useAccessFilter(`${storageKey}:scopes`);
+  const [levelQuery, setLevelQuery] = useState("");
   const [onlyAccess, setOnlyAccess] = useState(false);
   const [pickedAgents, setPickedAgents] = useState<ReadonlySet<string>>(new Set());
   const [pickedScopes, setPickedScopes] = useState<ReadonlySet<string>>(new Set());
@@ -664,13 +894,20 @@ function AccessPicker({
   const levelButtons = useId();
   const levelButtonId = (level: AccessLevelId) => `${levelButtons}-${level ?? NONE}`;
   const focusLevel = (level: AccessLevelId) => requestAnimationFrame(() => document.getElementById(levelButtonId(level))?.focus());
+  const agentWord = words.agent ?? AGENT_WORD;
+  const unit = words.unit ?? UNIT_WORD;
   const index = useMemo(() => accessIndex(cells), [cells]);
   const levelAt = useCallback((agent: string, scope: string): AccessLevelId => index.get(key(agent, scope))?.level ?? null, [index]);
   const agentFilter = accessFilter(agentQuery);
   const scopeFilter = accessFilter(scopeQuery);
+  const levelFilter = accessFilter(levelQuery);
   // Rows that are gone after a reload leave the selection: nothing is written to what the page no longer shows.
   const agentIds = useMemo(() => agents.filter((a) => pickedAgents.has(a.id)).map((a) => a.id), [agents, pickedAgents]);
-  const scopeIds = useMemo(() => scopes.filter((s) => pickedScopes.has(s.id)).map((s) => s.id), [scopes, pickedScopes]);
+  const scopeIds = useMemo(
+    () => (fixedScope ? scopes.map((s) => s.id) : scopes.filter((s) => pickedScopes.has(s.id)).map((s) => s.id)),
+    [fixedScope, scopes, pickedScopes],
+  );
+  const onlyScope = fixedScope ? scopes[0]?.id : undefined;
   const nameOfAgent = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   const nameOfScope = (id: string) => scopes.find((s) => s.id === id)?.name ?? id;
 
@@ -699,9 +936,10 @@ function AccessPicker({
   const ready = agentIds.length > 0 && scopeIds.length > 0;
   const total = agentIds.length * scopeIds.length;
   const hiddenAgents = agentIds.filter((id) => !shownAgents.some((a) => a.id === id)).length;
-  const hiddenScopes = scopeIds.filter((id) => !shownScopes.some((s) => s.id === id)).length;
+  const hiddenScopes = fixedScope ? 0 : scopeIds.filter((id) => !shownScopes.some((s) => s.id === id)).length;
   const hidden = hiddenAgents + hiddenScopes;
-  const summary = `${names(agentIds, nameOfAgent, "agent", "agents")} to ${names(scopeIds, nameOfScope, scopeWord.one, scopeWord.many)}`;
+  const whoSummary = names(agentIds, nameOfAgent, agentWord.one, agentWord.many);
+  const summary = fixedScope ? whoSummary : `${whoSummary} to ${names(scopeIds, nameOfScope, scopeWord.one, scopeWord.many)}`;
 
   const actions = useMemo(() => {
     const out: { cell: AccessCell; who: string }[] = [];
@@ -709,10 +947,10 @@ function AccessPicker({
     for (const a of agentIds)
       for (const s of scopeIds) {
         const cell = index.get(key(a, s));
-        if (cell?.action) out.push({ cell, who: `${nameOfAgent(a)} to ${nameOfScope(s)}` });
+        if (cell?.action) out.push({ cell, who: whoOf(a, s) });
       }
     return out;
-  }, [ready, agentIds, scopeIds, index]);
+  }, [ready, agentIds, scopeIds, index, whoOf]);
 
   const run = async (level: AccessLevelId, changes: AccessChange[]) => {
     setAsking(null);
@@ -721,19 +959,37 @@ function AccessPicker({
     setRunning({ done: 0, total: changes.length });
     const failures = await apply(changes, (done) => setRunning({ done, total: changes.length }));
     setRunning(null);
+    const notTried = failures.filter((f) => f.notTried).length;
+    const failed = failures.length - notTried;
     const set = changes.length - failures.length;
-    const parts = [`${count(set, "set", "set")}`, failures.length ? `${failures.length} failed` : null, skipped ? `${skipped} already had it` : null]
+    const parts = [
+      `${count(set, "set", "set")}`,
+      failed ? `${failed} failed` : null,
+      notTried ? `${notTried} not tried` : null,
+      skipped ? `${skipped} already had it` : null,
+    ]
       .filter(Boolean)
       .join(", ");
     addLog(`${summary}: ${levelName(level)}. ${parts}.`, failures);
-    setStatus(failures.length ? `${failures.length} of ${count(changes.length, "change", "changes")} failed. See the list below.` : `Done. ${parts}.`);
+    const stopped = failures.find((f) => f.notTried);
+    setStatus(
+      stopped
+        ? `Stopped. ${stopped.reason} ${parts}.`
+        : failures.length
+          ? `${failed} of ${count(changes.length, "change", "changes")} failed. See the list below.`
+          : `Done. ${parts}.`,
+    );
     focusLevel(level);
   };
   const pick = (level: AccessLevelId) => {
     const changes = accessChanges(agentIds, scopeIds, level, cells);
     if (changes.length === 0) {
       setAsking(null);
-      setStatus(`Nothing to change: ${count(total, "permission already has", "permissions already have")} ${levelName(level)}.`);
+      setStatus(
+        words.nothing
+          ? words.nothing(total, levelName(level))
+          : `Nothing to change: ${count(total, `${unit.one} already has`, `${unit.many} already have`)} ${levelName(level)}.`,
+      );
     } else if (changes.length > CONFIRM_ABOVE) setAsking({ level, changes });
     else void run(level, changes);
   };
@@ -742,21 +998,24 @@ function AccessPicker({
   }, [asking, confirmId]);
   useEffect(() => setAsking(null), [pickedAgents, pickedScopes, cells]);
 
+  const longLevels = levels.length > LEVELS_FILTER_ABOVE;
+  const shownLevels = longLevels ? levels.filter((l) => levelFilter.test(l.label)) : levels;
+  const withHints = levels.some((l) => l.hint);
   return (
     <div className="tb-access">
       <div className="tb-access-picker-head">
         <Heading ref={heading} tabIndex={-1} className="tb-access-head" id={titleId}>
-          Add or change many
+          {title}
         </Heading>
         <Button disabled={running !== null} onClick={onBack}>
-          Back to the list
+          {backLabel}
         </Button>
       </div>
-      <section className="tb-access-columns" aria-labelledby={titleId}>
-        <section className="tb-access-column" aria-label="Agents">
+      <section className={cx("tb-access-columns", fixedScope && "is-fixed")} aria-labelledby={titleId}>
+        <section className="tb-access-column" aria-label={capital(agentWord.many)}>
           <div className="tb-access-column-head">
-            <FilterField
-              label={`1. Which agents (${shownAgents.length} of ${agents.length})`}
+            <AccessFilterField
+              label={`1. Which ${agentWord.many} (${shownAgents.length} of ${agents.length})`}
               value={agentQuery}
               onChange={setAgentQuery}
               placeholder="Name, or a regex"
@@ -768,60 +1027,94 @@ function AccessPicker({
             </div>
           </div>
           <PickList
-            label="Agents"
+            label={capital(agentWord.many)}
             items={shownAgents.map((a) => ({
               id: a.id,
               name: a.name,
-              meta: [a.note, count(accessCount.get(a.id) ?? 0, scopeWord.one, scopeWord.many)].filter(Boolean).join(", "),
+              meta: [
+                a.note,
+                onlyScope !== undefined ? (nowText ?? levelName)(levelAt(a.id, onlyScope)) : count(accessCount.get(a.id) ?? 0, scopeWord.one, scopeWord.many),
+              ]
+                .filter(Boolean)
+                .join(", "),
             }))}
             picked={pickedAgents}
             onToggle={toggle(setPickedAgents)}
           />
         </section>
-        <section className="tb-access-column" aria-label={scopeWord.many}>
-          <div className="tb-access-column-head">
-            <FilterField
-              label={`2. To which ${scopeWord.many} (${shownScopes.length} of ${scopes.length})`}
-              value={scopeQuery}
-              onChange={setScopeQuery}
-              placeholder="Name, or a regex"
-              filter={scopeFilter}
-            />
-            <div className="tb-access-tools">
-              <Button aria-pressed={onlyAccess} className={cx(onlyAccess && "is-on")} onClick={() => setOnlyAccess((v) => !v)}>
-                Only with access
-              </Button>
-              <Button onClick={() => setPickedScopes((s) => new Set([...s, ...shownScopes.map((x) => x.id)]))}>Select all shown</Button>
-              <Button onClick={() => setPickedScopes(new Set())}>Clear</Button>
+        {fixedScope ? null : (
+          <section className="tb-access-column" aria-label={scopeWord.many}>
+            <div className="tb-access-column-head">
+              <AccessFilterField
+                label={`2. To which ${scopeWord.many} (${shownScopes.length} of ${scopes.length})`}
+                value={scopeQuery}
+                onChange={setScopeQuery}
+                placeholder="Name, or a regex"
+                filter={scopeFilter}
+              />
+              <div className="tb-access-tools">
+                <Button aria-pressed={onlyAccess} className={cx(onlyAccess && "is-on")} onClick={() => setOnlyAccess((v) => !v)}>
+                  Only with access
+                </Button>
+                <Button onClick={() => setPickedScopes((s) => new Set([...s, ...shownScopes.map((x) => x.id)]))}>Select all shown</Button>
+                <Button onClick={() => setPickedScopes(new Set())}>Clear</Button>
+              </div>
             </div>
-          </div>
-          <PickList
-            label={scopeWord.many}
-            items={shownScopes.map((s) => ({ id: s.id, name: s.name, meta: nowOf(s.id) }))}
-            picked={pickedScopes}
-            onToggle={toggle(setPickedScopes)}
-          />
-        </section>
-        <section className="tb-access-column" aria-label="Access">
+            <PickList
+              label={scopeWord.many}
+              items={shownScopes.map((s) => ({ id: s.id, name: s.name, meta: nowOf(s.id) }))}
+              picked={pickedScopes}
+              onToggle={toggle(setPickedScopes)}
+            />
+          </section>
+        )}
+        <section className="tb-access-column" aria-label={words.set ?? "Access"}>
           <div className="tb-access-column-head">
-            <p className="tb-label tb-access-step">3. Set access</p>
+            <p className="tb-label tb-access-step">{`${fixedScope ? 2 : 3}. ${words.set ?? "Set access"}`}</p>
+            {panel}
             <p className="tb-access-sentence">
-              {ready ? `${summary}. This sets ${count(total, "permission", "permissions")}.` : `Pick at least one agent and one ${scopeWord.one}.`}
+              {ready
+                ? `${summary}. ${words.sentence ? words.sentence(total) : `This sets ${count(total, unit.one, unit.many)}.`}`
+                : fixedScope
+                  ? `Pick at least one ${agentWord.one}.`
+                  : `Pick at least one ${agentWord.one} and one ${scopeWord.one}.`}
             </p>
             {ready && hidden > 0 ? (
               <p className="tb-access-note">{`${count(hidden, "pick is", "picks are")} hidden by a filter, and ${hidden === 1 ? "it counts" : "they count"} too.`}</p>
             ) : null}
-            <div className="tb-access-levels">
-              {[null, ...levels.map((l) => l.id)].map((id) => (
-                <Button key={id ?? NONE} id={levelButtonId(id)} disabled={!ready || running !== null || asking !== null} onClick={() => pick(id)}>
-                  {levelName(id)}
+            {blocked ? <p className="tb-access-note">{blocked}</p> : null}
+            {longLevels ? (
+              <AccessFilterField
+                label={`Filter these (${shownLevels.length} of ${levels.length})`}
+                value={levelQuery}
+                onChange={setLevelQuery}
+                placeholder="Name, or a regex"
+                filter={levelFilter}
+              />
+            ) : null}
+            <div className={cx("tb-access-levels", longLevels && "is-long", withHints && "has-hints")}>
+              {allowNone ? (
+                <Button id={levelButtonId(null)} disabled={!ready || running !== null || asking !== null || !!blocked} onClick={() => pick(null)}>
+                  {levelName(null)}
                 </Button>
+              ) : null}
+              {shownLevels.map((l) => (
+                <div className="tb-access-level-choice" key={l.id}>
+                  <Button id={levelButtonId(l.id)} disabled={!ready || running !== null || asking !== null || !!blocked} onClick={() => pick(l.id)}>
+                    {l.label}
+                  </Button>
+                  {l.hint ? <span className="tb-access-note">{l.hint}</span> : null}
+                </div>
               ))}
             </div>
             {asking ? (
               <Notice tone="needs-you" role="alert">
                 <span className="tb-access-confirm">
-                  <span>{`This changes ${count(asking.changes.length, "permission", "permissions")} to ${levelName(asking.level)}.`}</span>
+                  <span>
+                    {words.ask
+                      ? words.ask(asking.changes.length, levelName(asking.level))
+                      : `This changes ${count(asking.changes.length, unit.one, unit.many)} to ${levelName(asking.level)}.`}
+                  </span>
                   <span className="tb-access-tools">
                     <Button id={confirmId} variant="primary" onClick={() => void run(asking.level, asking.changes)}>
                       Yes, change them
@@ -853,20 +1146,10 @@ function AccessPicker({
                 {actions.length > ACTIONS_SHOWN ? <p className="tb-access-note">{`Pick fewer to see the other ${actions.length - ACTIONS_SHOWN}.`}</p> : null}
               </>
             ) : null}
-            <p className="tb-label">{`Changes this session (${log.length})`}</p>
-            {log.length === 0 ? <p className="tb-access-note">{`Pick agents and ${scopeWord.many}, then a level.`}</p> : null}
-            {log.map((entry) => (
-              <div className="tb-access-log" key={entry.id}>
-                <span>{entry.text}</span>
-                {entry.failures.length > 0 ? (
-                  <ul className="tb-access-failures">
-                    {entry.failures.map((f) => (
-                      <li key={f.who}>{`Failed: ${f.who}. ${f.reason}`}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ))}
+            <SessionLog
+              log={log}
+              empty={words.start ?? (fixedScope ? `Pick ${agentWord.many}, then one value.` : `Pick ${agentWord.many} and ${scopeWord.many}, then a level.`)}
+            />
           </div>
         </section>
       </section>

@@ -1,5 +1,16 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.5.0 (2026-10-31)
+
+C382 batch 2. No breaking change. Apps on 0.4.x get the two bulk fixes at their next release; nothing changes for them otherwise, except that the opening view also shows the session log.
+- `AccessBulk`: the bulk editor alone, for one scope: pick many, then one click per value, with the session log. For a page with no opening view, such as giving one role or setting one owner on many agents.
+- `AccessEditor` and `AccessBulk`: `words` (the page's own words, also the sentence above the values), `allowNone: false` (no button for the level `null`), `writeMany` (one call for an op that replaces a whole list; never `write` per change, which would overwrite itself), `AccessEditor.fixedScope` (a page about one scope: no scope column, field or "to"). `AccessBulk`: `panel` (a form or a warning above the values), `blocked` (why no value can be used yet), `nowText`.
+- A level can carry a `hint`. Above 8 values the value column gets a filter and scrolls.
+- Bulk stops after a failure of the sign-in (401, `session_required`, `csrf_invalid` and such) instead of trying every write. The rest shows as not tried, and the page says it stopped. `accessSessionEnded` is the test; `accessWriteAll` takes another one as its last argument.
+- The failure list of one log entry shows at most `ACCESS_FAILURES_SHOWN` (20) rows, and then how many more failed.
+- Exports `AccessFilterField` and `useAccessFilter`, for a filter on an app's own list.
+- Rendered check: the new views at 1440, 1280 and 375, light and dark, in the layout test too.
+
 ## 0.4.1 (2026-10-31)
 
 Fixes for 0.4.0 from the live check on DEV (C382). No API change.

@@ -386,3 +386,233 @@ test("two scopes with one name stay apart", async () => {
   assert.deepEqual(names, ["Henry work", "Henry work (2)"]);
   await m.unmount();
 });
+
+test("bulk stops after a failure of the sign-in: the rest is not sent and comes back as not tried", async () => {
+  const { accessChanges, accessWriteAll, accessSessionEnded } = await ui();
+  const changes = accessChanges(
+    AGENTS.slice(0, 10).map((a) => a.id),
+    ["s0"],
+    "read",
+    [],
+  );
+  const sent: string[] = [];
+  const failed = await accessWriteAll(
+    changes,
+    async (c) => {
+      sent.push(c.agent);
+      if (c.agent === "a1") throw Object.assign(new Error("signed out"), { code: "session_required", httpStatus: 401 });
+    },
+    (e) => (e as Error).message,
+    undefined,
+    1,
+  );
+  assert.deepEqual(sent, ["a0", "a1"], "nothing is sent after the failure");
+  assert.equal(failed.filter((f) => !f.notTried).length, 1);
+  assert.equal(failed.filter((f) => f.notTried).length, 8);
+  assert.equal(accessSessionEnded(Object.assign(new Error("x"), { code: "csrf_invalid" })), true);
+  assert.equal(accessSessionEnded(Object.assign(new Error("x"), { code: "role_full", httpStatus: 409 })), false, "a refusal of one row stops nothing");
+  assert.equal(accessSessionEnded(null), false);
+});
+
+test("picker: after a sign-in failure the page says it stopped, and sends nothing more", async () => {
+  const { AccessEditor } = await ui();
+  let writes = 0;
+  const { root: host } = await mount(
+    h(AccessEditor, {
+      ...props(),
+      write: async () => {
+        writes++;
+        throw Object.assign(new Error("You are signed out."), { httpStatus: 401 });
+      },
+    }),
+  );
+  await click(button(host, "Add or change many"));
+  await click(button(host, "Select all shown"));
+  const buttons = [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Select all shown");
+  await click(buttons[1] as Element);
+  await click(button(host, "Read"));
+  await click(button(host, "Yes, change them"));
+  await flush();
+  assert.ok(writes <= 4, `at most the writes in progress: ${writes}`);
+  const text = host.textContent ?? "";
+  assert.match(text, /Stopped\. You are signed out\./);
+  assert.match(text, /not tried/);
+  assert.doesNotMatch(text, /Done\./);
+});
+
+test("the failure log has an end, and says how many it does not show", async () => {
+  const { AccessEditor, ACCESS_FAILURES_SHOWN } = await ui();
+  const { root: host } = await mount(h(AccessEditor, { ...props(), write: async () => Promise.reject(new Error("refused")) }));
+  await click(button(host, "Add or change many"));
+  await pick(host, "Henry");
+  const all = [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Select all shown");
+  await click(all[1] as Element);
+  await click(button(host, "Read"));
+  await click(button(host, "Yes, change them"));
+  await flush();
+  await flush();
+  const rows = [...host.querySelectorAll(".tb-access-failures li")].map((x) => x.textContent ?? "");
+  assert.equal(rows.length, ACCESS_FAILURES_SHOWN + 1);
+  assert.equal(rows.at(-1), `And ${192 - ACCESS_FAILURES_SHOWN} more failed.`);
+});
+
+const ONE_TEAM = [{ id: "t1", name: "Support" }];
+const team = (extra: object = {}) =>
+  props({
+    scopes: ONE_TEAM,
+    fixedScope: true,
+    levels: [
+      { id: "member", label: "Member" },
+      { id: "lead", label: "Lead" },
+    ],
+    noneLabel: "Not in team",
+    defaults: [{ what: "Everyone", level: null }],
+    defaultOf: () => null,
+    cells: [{ agent: "a0", scope: "t1", level: "lead" }],
+    reload: async () => [{ agent: "a0", scope: "t1", level: "lead" }],
+    words: {
+      agent: { one: "person or agent", many: "people and agents" },
+      unit: { one: "person or agent", many: "people and agents" },
+      differHead: "In this team",
+      differEmpty: "No one is in this team yet.",
+      back: "Remove from team",
+      lede: (total: number, differ: number) => `${total} people and agents. ${differ} in this team.`,
+    },
+    ...extra,
+  });
+
+test("one scope: no scope field, no scope column, no 'to' in the rows; one write in the log of the opening view", async () => {
+  const { AccessEditor } = await ui();
+  const writes: unknown[][] = [];
+  const cells = [{ agent: "a0", scope: "t1", level: "lead" }];
+  const after = [...cells, { agent: "a1", scope: "t1", level: "member" }];
+  let now = cells;
+  const { root: host } = await mount(
+    h(AccessEditor, {
+      ...team({
+        writeMany: async (changes: unknown[]) => {
+          writes.push(changes);
+          now = after;
+        },
+        write: undefined,
+        reload: async () => now,
+      }),
+    }),
+  );
+  const text = host.textContent ?? "";
+  assert.match(text, /32 people and agents\. 1 in this team\./);
+  assert.match(text, /In this team/);
+  assert.equal(host.querySelectorAll('[role="combobox"]').length, 2, "who and level; no scope field");
+  assert.equal(host.querySelectorAll(".tb-access-list-plain .tb-access-to").length, 0);
+  button(host, /Remove from team: Henry/);
+  await click(button(host, "Add or change many"));
+  assert.equal(host.querySelectorAll('[role="listbox"]').length, 1, "one column to pick from");
+  assert.match(host.textContent ?? "", /1\. Which people and agents \(32 of 32\)/);
+  assert.match(host.textContent ?? "", /2\. Set access/);
+  assert.match(host.textContent ?? "", /Lead/);
+  await pick(host, "Tempo");
+  await click(button(host, "Member"));
+  assert.deepEqual(writes, [[{ agent: "a1", scope: "t1", level: "member" }]], "one call for one click");
+  assert.match(host.textContent ?? "", /Tempo: Member\. 1 set\./);
+  await click(button(host, "Back to the list"));
+  assert.match(host.textContent ?? "", /Changes this session \(1\)/, "the log stays in view on the opening view");
+});
+
+test("one call for a whole list: a refusal fails every row of the click, and nothing reads as set", async () => {
+  const { AccessEditor } = await ui();
+  const { root: host } = await mount(h(AccessEditor, { ...team({ write: undefined, writeMany: async () => Promise.reject(new Error("The team is gone.")) }) }));
+  await click(button(host, "Add or change many"));
+  await pick(host, "Tempo");
+  await pick(host, "QA fleet 2");
+  await click(button(host, "Member"));
+  const text = host.textContent ?? "";
+  assert.match(text, /2 of 2 changes failed/);
+  assert.match(text, /Failed: Tempo\. The team is gone\./);
+  assert.match(text, /0 set, 2 failed/);
+});
+
+const bulkProps = (extra: object = {}) => ({
+  agents: AGENTS,
+  scope: { id: "access", name: "Access" },
+  levels: [
+    { id: "1", label: "Read only", hint: "It may read." },
+    { id: "2", label: "Read and change", hint: "It may change things." },
+  ],
+  allowNone: false,
+  noneLabel: "Not set",
+  cells: [{ agent: "a0", scope: "access", level: "1" }],
+  write: async () => {},
+  reload: async () => [{ agent: "a0", scope: "access", level: "1" }],
+  explain: (e: unknown) => (e as Error).message,
+  storageKey: `test:${Math.random()}`,
+  title: "Set many",
+  backLabel: "Back",
+  onBack: () => {},
+  ...extra,
+});
+
+test("AccessBulk: no button for no access when the page says so, the hints show, the current value shows per name", async () => {
+  const { AccessBulk } = await ui();
+  const { root: host } = await mount(h(AccessBulk, bulkProps()));
+  assert.equal(
+    [...host.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Not set"),
+    false,
+  );
+  assert.match(host.textContent ?? "", /It may change things\./);
+  const row = [...host.querySelectorAll('[role="option"]')].find((x) => x.textContent?.includes("Henry"));
+  assert.match(row?.textContent ?? "", /Read only/);
+  const tempo = [...host.querySelectorAll('[role="option"]')].find((x) => x.textContent?.includes("Tempo"));
+  assert.match(tempo?.textContent ?? "", /Not set/);
+});
+
+test("AccessBulk: a blocked page writes nothing and says why; the panel shows", async () => {
+  const { AccessBulk } = await ui();
+  let writes = 0;
+  const { root: host } = await mount(
+    h(AccessBulk, {
+      ...bulkProps({
+        blocked: "Choose a reason first.",
+        panel: h("p", null, "The form"),
+        write: async () => {
+          writes++;
+        },
+      }),
+    }),
+  );
+  await pick(host, "Tempo");
+  assert.match(host.textContent ?? "", /Choose a reason first\./);
+  assert.match(host.textContent ?? "", /The form/);
+  assert.equal(button(host, "Read and change").disabled, true);
+  assert.equal(writes, 0);
+});
+
+test("AccessBulk: a long list of values gets a filter; the value 'none' stays in view", async () => {
+  const { AccessBulk } = await ui();
+  const levels = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, label: i === 0 ? "Martin" : `QA person ${i}` }));
+  const writes: unknown[] = [];
+  const { root: host } = await mount(
+    h(AccessBulk, {
+      ...bulkProps({
+        levels,
+        allowNone: true,
+        noneLabel: "No owner",
+        cells: [],
+        reload: async () => [],
+        write: async (c: unknown) => {
+          writes.push(c);
+        },
+      }),
+    }),
+  );
+  const inputs = [...host.querySelectorAll("input")] as HTMLInputElement[];
+  assert.equal(inputs.length, 2);
+  await type(inputs[1] as HTMLInputElement, "^(?!QA)");
+  await flush();
+  assert.match(host.textContent ?? "", /Filter these \(1 of 30\)/);
+  button(host, "Martin");
+  button(host, "No owner");
+  assert.equal(
+    [...host.querySelectorAll("button")].some((b) => b.textContent?.trim() === "QA person 1"),
+    false,
+  );
+});
