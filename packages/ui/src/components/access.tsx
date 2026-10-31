@@ -340,6 +340,8 @@ export type AccessWords = {
   differHead?: string;
   differEmpty?: string;
   back?: string;
+  /** What the picks will do, after their names: "This sets 3 permissions." when left out. */
+  sentence?: (n: number) => string;
   /** The first line of the opening view. */
   lede?: (total: number, differ: number) => string;
   /** The question above the confirmation limit, and the line when nothing has to change. */
@@ -1072,7 +1074,7 @@ function AccessPicker({
             {panel}
             <p className="tb-access-sentence">
               {ready
-                ? `${summary}. This sets ${count(total, unit.one, unit.many)}.`
+                ? `${summary}. ${words.sentence ? words.sentence(total) : `This sets ${count(total, unit.one, unit.many)}.`}`
                 : fixedScope
                   ? `Pick at least one ${agentWord.one}.`
                   : `Pick at least one ${agentWord.one} and one ${scopeWord.one}.`}
