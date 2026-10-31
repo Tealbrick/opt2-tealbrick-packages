@@ -1,5 +1,11 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.7.1 (2026-11-01)
+
+C382 batch 4, from the review. No breaking change.
+- `ListFilter`: "Show older" (`onLoadMore`) now stands beside the count while the filter reads only the loaded rows, not only inside the "nothing found" notice. Before, a filter that found 5 of 100 loaded rows said more were not loaded and gave no way to load them.
+- A list the page cannot load further (the server cuts it) omits `onLoadMore`; the sentence then says the list is cut and older rows cannot be searched there, instead of "more are not loaded yet".
+
 ## 0.7.0 (2026-11-01)
 
 C382 batch 4. No breaking change. Apps get the filter at their next release.
