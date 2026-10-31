@@ -1,5 +1,12 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.6.0 (2026-10-31)
+
+C382 batch 3. No breaking change. Apps get the two fixes at their next release.
+- `AccessOption.ask`: a level that always asks first. It returns the sentence (name the count and what the level allows), or null for the normal rule. One click on such a level writes nothing until Yes.
+- The Yes of a confirmation is off while `blocked` says the form is not valid, and while writes run. It stayed active before.
+- New exports for a page with its own values: `AccessPickColumn` (filter, Select all shown, Clear, the multi-select list), `useAccessPicks` (its state), `AccessSessionLog` with `AccessLogEntry`, `AccessPickItem`. The bulk editor uses the same column.
+
 ## 0.5.0 (2026-10-31)
 
 C382 batch 2. No breaking change. Apps on 0.4.x get the two bulk fixes at their next release; nothing changes for them otherwise, except that the opening view also shows the session log.

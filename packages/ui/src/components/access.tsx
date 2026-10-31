@@ -12,7 +12,14 @@ import { Notice } from "./surfaces.tsx";
 
 /** A level the app declares. `null` means no access in every prop that takes a level. */
 export type AccessLevelId = string | null;
-export type AccessOption = { id: string; label: string /** one line beside the button, what this value does */; hint?: string };
+export type AccessOption = {
+  id: string;
+  label: string;
+  /** one line beside the button, what this value does */
+  hint?: string;
+  /** A level that always asks first, whatever the count: the sentence names the count and what the level allows. No sentence: the normal rule. */
+  ask?: (changes: readonly AccessChange[]) => string | null;
+};
 export type AccessAgent = { id: string; name: string /** short words after the name, e.g. "paused" */; note?: string };
 export type AccessScope = { id: string; name: string };
 /** A decision the app offers on one cell, e.g. Allow on what an update adds. It is shown also when the level equals the default. */
@@ -272,6 +279,87 @@ function PickList({
   );
 }
 
+export type AccessPickItem = { id: string; name: string; meta: string };
+
+/** A column of the bulk editor: the filter, Select all shown, Clear, and a multi-select list with one Tab stop. */
+export function AccessPickColumn({
+  label,
+  step,
+  items,
+  total,
+  picked,
+  onToggle,
+  query,
+  onQuery,
+  filter,
+  onSelectShown,
+  onClear,
+  tools,
+  note,
+}: {
+  label: string;
+  /** The text above the filter; the count of what shows is added. */
+  step: string;
+  items: readonly AccessPickItem[];
+  total: number;
+  picked: ReadonlySet<string>;
+  onToggle: (id: string) => void;
+  query: string;
+  onQuery: (value: string) => void;
+  filter: { invalid: boolean; slow?: boolean };
+  onSelectShown: () => void;
+  onClear: () => void;
+  /** Buttons before Select all shown. */
+  tools?: ReactNode;
+  /** Under the buttons: what the list leaves out, or a setting that shows but cannot change. */
+  note?: ReactNode;
+}) {
+  return (
+    <section className="tb-access-column" aria-label={label}>
+      <div className="tb-access-column-head">
+        <AccessFilterField label={`${step} (${items.length} of ${total})`} value={query} onChange={onQuery} placeholder="Name, or a regex" filter={filter} />
+        <div className="tb-access-tools">
+          {tools}
+          <Button onClick={onSelectShown}>Select all shown</Button>
+          <Button onClick={onClear}>Clear</Button>
+        </div>
+        {note}
+      </div>
+      <PickList label={label} items={items} picked={picked} onToggle={onToggle} />
+    </section>
+  );
+}
+
+/** The state of one such column. Duplicate names stay apart. A pick that left the list leaves the picks. A filter hides a pick, and `hidden` counts it. */
+export function useAccessPicks<T extends { id: string; name: string }>(list: readonly T[], storageKey: string, initial?: readonly string[]) {
+  const items = useMemo(() => apart(list), [list]);
+  const [query, setQuery] = useAccessFilter(storageKey);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set(initial));
+  const filter = accessFilter(query);
+  const shown = items.filter((i) => filter.test(i.name));
+  const ids = useMemo(() => items.filter((i) => picked.has(i.id)).map((i) => i.id), [items, picked]);
+  const hidden = ids.filter((id) => !shown.some((i) => i.id === id)).length;
+  return {
+    items,
+    query,
+    setQuery,
+    filter,
+    shown,
+    picked,
+    ids,
+    hidden,
+    toggle: (id: string) =>
+      setPicked((s) => {
+        const next = new Set(s);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    selectShown: () => setPicked((s) => new Set([...s, ...shown.map((i) => i.id)])),
+    clear: () => setPicked(new Set()),
+  };
+}
+
 /** Note and action of one cell. A failed action says so and the list is read again, because the offer may have changed. */
 function CellExtra({
   cell,
@@ -324,7 +412,8 @@ function CellExtra({
   );
 }
 
-type LogEntry = { id: number; text: string; failures: { who: string; reason: string }[]; notTried: number };
+export type AccessLogEntry = { id: number; text: string; failures: { who: string; reason: string }[]; notTried: number };
+type LogEntry = AccessLogEntry;
 
 /** A page's own words where the default words say something else. */
 export type AccessWords = {
@@ -619,7 +708,7 @@ const capital = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
 /** A failure log has an end: after a bad write to 192 scopes the page stays readable, and it says how many it does not show. */
 export const ACCESS_FAILURES_SHOWN = 20;
 
-function SessionLog({ log, empty }: { log: readonly LogEntry[]; empty?: string }) {
+export function AccessSessionLog({ log, empty }: { log: readonly AccessLogEntry[]; empty?: string }) {
   return (
     <>
       <p className="tb-label">{`Changes this session (${log.length})`}</p>
@@ -836,7 +925,7 @@ function AccessList({
         </div>
         {log.length > 0 ? (
           <div className="tb-access-rows tb-access-log-box">
-            <SessionLog log={log} />
+            <AccessSessionLog log={log} />
           </div>
         ) : null}
       </section>
@@ -887,7 +976,7 @@ function AccessPicker({
   const [pickedAgents, setPickedAgents] = useState<ReadonlySet<string>>(new Set());
   const [pickedScopes, setPickedScopes] = useState<ReadonlySet<string>>(new Set());
   const [running, setRunning] = useState<{ done: number; total: number } | null>(null);
-  const [asking, setAsking] = useState<{ level: AccessLevelId; changes: AccessChange[] } | null>(null);
+  const [asking, setAsking] = useState<{ level: AccessLevelId; changes: AccessChange[]; sentence: string | null } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const titleId = useId();
   const confirmId = useId();
@@ -990,8 +1079,11 @@ function AccessPicker({
           ? words.nothing(total, levelName(level))
           : `Nothing to change: ${count(total, `${unit.one} already has`, `${unit.many} already have`)} ${levelName(level)}.`,
       );
-    } else if (changes.length > CONFIRM_ABOVE) setAsking({ level, changes });
-    else void run(level, changes);
+    } else {
+      const sentence = levels.find((l) => l.id === level)?.ask?.(changes) ?? null;
+      if (sentence || changes.length > CONFIRM_ABOVE) setAsking({ level, changes, sentence });
+      else void run(level, changes);
+    }
   };
   useEffect(() => {
     if (asking) document.getElementById(confirmId)?.focus();
@@ -1012,61 +1104,47 @@ function AccessPicker({
         </Button>
       </div>
       <section className={cx("tb-access-columns", fixedScope && "is-fixed")} aria-labelledby={titleId}>
-        <section className="tb-access-column" aria-label={capital(agentWord.many)}>
-          <div className="tb-access-column-head">
-            <AccessFilterField
-              label={`1. Which ${agentWord.many} (${shownAgents.length} of ${agents.length})`}
-              value={agentQuery}
-              onChange={setAgentQuery}
-              placeholder="Name, or a regex"
-              filter={agentFilter}
-            />
-            <div className="tb-access-tools">
-              <Button onClick={() => setPickedAgents((s) => new Set([...s, ...shownAgents.map((a) => a.id)]))}>Select all shown</Button>
-              <Button onClick={() => setPickedAgents(new Set())}>Clear</Button>
-            </div>
-          </div>
-          <PickList
-            label={capital(agentWord.many)}
-            items={shownAgents.map((a) => ({
-              id: a.id,
-              name: a.name,
-              meta: [
-                a.note,
-                onlyScope !== undefined ? (nowText ?? levelName)(levelAt(a.id, onlyScope)) : count(accessCount.get(a.id) ?? 0, scopeWord.one, scopeWord.many),
-              ]
-                .filter(Boolean)
-                .join(", "),
-            }))}
-            picked={pickedAgents}
-            onToggle={toggle(setPickedAgents)}
-          />
-        </section>
+        <AccessPickColumn
+          label={capital(agentWord.many)}
+          step={`1. Which ${agentWord.many}`}
+          total={agents.length}
+          items={shownAgents.map((a) => ({
+            id: a.id,
+            name: a.name,
+            meta: [
+              a.note,
+              onlyScope !== undefined ? (nowText ?? levelName)(levelAt(a.id, onlyScope)) : count(accessCount.get(a.id) ?? 0, scopeWord.one, scopeWord.many),
+            ]
+              .filter(Boolean)
+              .join(", "),
+          }))}
+          picked={pickedAgents}
+          onToggle={toggle(setPickedAgents)}
+          query={agentQuery}
+          onQuery={setAgentQuery}
+          filter={agentFilter}
+          onSelectShown={() => setPickedAgents((s) => new Set([...s, ...shownAgents.map((a) => a.id)]))}
+          onClear={() => setPickedAgents(new Set())}
+        />
         {fixedScope ? null : (
-          <section className="tb-access-column" aria-label={scopeWord.many}>
-            <div className="tb-access-column-head">
-              <AccessFilterField
-                label={`2. To which ${scopeWord.many} (${shownScopes.length} of ${scopes.length})`}
-                value={scopeQuery}
-                onChange={setScopeQuery}
-                placeholder="Name, or a regex"
-                filter={scopeFilter}
-              />
-              <div className="tb-access-tools">
-                <Button aria-pressed={onlyAccess} className={cx(onlyAccess && "is-on")} onClick={() => setOnlyAccess((v) => !v)}>
-                  Only with access
-                </Button>
-                <Button onClick={() => setPickedScopes((s) => new Set([...s, ...shownScopes.map((x) => x.id)]))}>Select all shown</Button>
-                <Button onClick={() => setPickedScopes(new Set())}>Clear</Button>
-              </div>
-            </div>
-            <PickList
-              label={scopeWord.many}
-              items={shownScopes.map((s) => ({ id: s.id, name: s.name, meta: nowOf(s.id) }))}
-              picked={pickedScopes}
-              onToggle={toggle(setPickedScopes)}
-            />
-          </section>
+          <AccessPickColumn
+            label={scopeWord.many}
+            step={`2. To which ${scopeWord.many}`}
+            total={scopes.length}
+            items={shownScopes.map((s) => ({ id: s.id, name: s.name, meta: nowOf(s.id) }))}
+            picked={pickedScopes}
+            onToggle={toggle(setPickedScopes)}
+            query={scopeQuery}
+            onQuery={setScopeQuery}
+            filter={scopeFilter}
+            onSelectShown={() => setPickedScopes((s) => new Set([...s, ...shownScopes.map((x) => x.id)]))}
+            onClear={() => setPickedScopes(new Set())}
+            tools={
+              <Button aria-pressed={onlyAccess} className={cx(onlyAccess && "is-on")} onClick={() => setOnlyAccess((v) => !v)}>
+                Only with access
+              </Button>
+            }
+          />
         )}
         <section className="tb-access-column" aria-label={words.set ?? "Access"}>
           <div className="tb-access-column-head">
@@ -1111,12 +1189,13 @@ function AccessPicker({
               <Notice tone="needs-you" role="alert">
                 <span className="tb-access-confirm">
                   <span>
-                    {words.ask
-                      ? words.ask(asking.changes.length, levelName(asking.level))
-                      : `This changes ${count(asking.changes.length, unit.one, unit.many)} to ${levelName(asking.level)}.`}
+                    {asking.sentence ??
+                      (words.ask
+                        ? words.ask(asking.changes.length, levelName(asking.level))
+                        : `This changes ${count(asking.changes.length, unit.one, unit.many)} to ${levelName(asking.level)}.`)}
                   </span>
                   <span className="tb-access-tools">
-                    <Button id={confirmId} variant="primary" onClick={() => void run(asking.level, asking.changes)}>
+                    <Button id={confirmId} variant="primary" disabled={!!blocked || running !== null} onClick={() => void run(asking.level, asking.changes)}>
                       Yes, change them
                     </Button>
                     <Button
@@ -1146,7 +1225,7 @@ function AccessPicker({
                 {actions.length > ACTIONS_SHOWN ? <p className="tb-access-note">{`Pick fewer to see the other ${actions.length - ACTIONS_SHOWN}.`}</p> : null}
               </>
             ) : null}
-            <SessionLog
+            <AccessSessionLog
               log={log}
               empty={words.start ?? (fixedScope ? `Pick ${agentWord.many}, then one value.` : `Pick ${agentWord.many} and ${scopeWord.many}, then a level.`)}
             />

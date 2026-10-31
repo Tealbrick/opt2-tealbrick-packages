@@ -29,6 +29,8 @@ App stills (10 apps: the 7 opt2 apps, Observer, Live Artifacts and Creative): co
 
 `AccessEditor` replaces a grid of agents and scopes: the defaults once, then only what differs, plus a bulk editor. Give it the app's levels and default rule from `tealbrick.manifest.json`, the stored rows, and the app's existing per-cell write. See `src/components/access.tsx`. `AccessBulk` is the bulk editor alone, for one scope: pick many, then one value. Use `writeMany` when the app's op replaces a whole list.
 
+A page with its own values (numbers, several choices at once) composes the same view from `AccessPickColumn`, `useAccessPicks`, `AccessFilterField` and `AccessSessionLog`, inside `tb-access-columns`. A level that must always ask first has `ask` on its option.
+
 ## Guard (run it in CI)
 
 ```sh
