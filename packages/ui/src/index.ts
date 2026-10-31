@@ -18,9 +18,13 @@ export {
   type AccessFailure,
   AccessFilterField,
   type AccessLevelId,
+  type AccessLogEntry,
   type AccessOption,
+  AccessPickColumn,
+  type AccessPickItem,
   type AccessRow,
   type AccessScope,
+  AccessSessionLog,
   type AccessWords,
   accessChanges,
   accessDifferences,
@@ -30,6 +34,7 @@ export {
   accessUnconfirmed,
   accessWriteAll,
   useAccessFilter,
+  useAccessPicks,
 } from "./components/access.tsx";
 export {
   Avatar,

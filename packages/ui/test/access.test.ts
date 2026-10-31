@@ -616,3 +616,132 @@ test("AccessBulk: a long list of values gets a filter; the value 'none' stays in
     false,
   );
 });
+
+test("a level with `ask` asks first at 2 agents, names what it allows, and writes nothing until Yes; 1 agent runs at once", async () => {
+  const { AccessBulk } = await ui();
+  const writes: string[] = [];
+  let cells = [{ agent: "a0", scope: "access", level: "1" }];
+  const { root: host } = await mount(
+    h(AccessBulk, {
+      ...bulkProps({
+        levels: [
+          { id: "1", label: "Read only" },
+          {
+            id: "4",
+            label: "Everything",
+            ask: (c: readonly unknown[]) => (c.length > 1 ? `This gives ${c.length} agents every action without a question.` : null),
+          },
+        ],
+        cells,
+        reload: async () => cells,
+        write: async (c: { agent: string; scope: string; level: string }) => {
+          writes.push(c.agent);
+          cells = [...cells.filter((x) => x.agent !== c.agent), c];
+        },
+      }),
+    }),
+  );
+  await pick(host, "Henry");
+  await pick(host, "Tempo");
+  await click(button(host, "Everything"));
+  assert.equal(writes.length, 0);
+  assert.match(host.textContent ?? "", /This gives 2 agents every action without a question\./);
+  await click(button(host, "Cancel"));
+  assert.equal(writes.length, 0);
+  await click(button(host, "Everything"));
+  await click(button(host, "Yes, change them"));
+  assert.deepEqual(writes, ["a0", "a1"]);
+
+  const one: string[] = [];
+  const { root: single } = await mount(
+    h(AccessBulk, {
+      ...bulkProps({
+        levels: [{ id: "4", label: "Everything", ask: (c: readonly unknown[]) => (c.length > 1 ? "Asks" : null) }],
+        reload: async () => [{ agent: "a1", scope: "access", level: "4" }],
+        write: async (c: { agent: string }) => {
+          one.push(c.agent);
+        },
+      }),
+    }),
+  );
+  await pick(single, "Tempo");
+  await click(button(single, "Everything"));
+  assert.deepEqual(one, ["a1"]);
+});
+
+test("Yes on a confirmation goes off when the form goes invalid, and writes nothing", async () => {
+  const { AccessBulk } = await ui();
+  const { useState } = await import("react");
+  const writes: string[] = [];
+  const cells = [{ agent: "a0", scope: "access", level: "1" }];
+  function Page() {
+    const [bad, setBad] = useState(false);
+    return h(AccessBulk, {
+      ...bulkProps({
+        cells,
+        blocked: bad ? "Choose a reason first." : null,
+        panel: h("button", { type: "button", onClick: () => setBad(true) }, "Break the form"),
+        write: async (c: { agent: string }) => {
+          writes.push(c.agent);
+        },
+      }),
+    });
+  }
+  const { root: host } = await mount(h(Page, null));
+  await click(button(host, "Select all shown"));
+  await click(button(host, "Read and change"));
+  assert.equal(button(host, "Yes, change them").disabled, false);
+  await click(button(host, "Break the form"));
+  assert.equal(button(host, "Yes, change them").disabled, true);
+  await click(button(host, "Yes, change them"));
+  assert.equal(writes.length, 0);
+});
+
+test("AccessPickColumn with useAccessPicks: regex filter, a hidden pick still counts, duplicate names stay apart, no pick for what left the list", async () => {
+  const { AccessPickColumn, useAccessPicks } = await ui();
+  const { useState } = await import("react");
+  let state: { ids: readonly string[]; hidden: number } = { ids: [], hidden: 0 };
+  const LIST = [
+    { id: "x1", name: "QA fleet 01" },
+    { id: "x2", name: "QA fleet 01" },
+    { id: "x3", name: "Henry" },
+  ];
+  function Page() {
+    const [list, setList] = useState(LIST);
+    const p = useAccessPicks(list, `test:${"column"}`);
+    state = p;
+    return h(
+      "div",
+      null,
+      h("button", { type: "button", onClick: () => setList(LIST.slice(1)) }, "Drop one"),
+      h(AccessPickColumn, {
+        label: "Agents",
+        step: "1. Which agents",
+        items: p.shown.map((i: { id: string; name: string }) => ({ id: i.id, name: i.name, meta: "" })),
+        total: p.items.length,
+        picked: p.picked,
+        onToggle: p.toggle,
+        query: p.query,
+        onQuery: p.setQuery,
+        filter: p.filter,
+        onSelectShown: p.selectShown,
+        onClear: p.clear,
+      }),
+    );
+  }
+  const { root: host } = await mount(h(Page, null));
+  assert.match(host.textContent ?? "", /1\. Which agents \(3 of 3\)/);
+  assert.match(host.textContent ?? "", /QA fleet 01 \(2\)/);
+  await click(button(host, "Select all shown"));
+  assert.deepEqual(state.ids, ["x1", "x2", "x3"]);
+  const input = host.querySelector("input") as HTMLInputElement;
+  await act(async () => {
+    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
+    set?.call(input, "^(?!QA)");
+    input.dispatchEvent(new (globalThis as unknown as { Event: typeof Event }).Event("input", { bubbles: true }));
+  });
+  assert.match(host.textContent ?? "", /1\. Which agents \(1 of 3\)/);
+  assert.equal(state.hidden, 2);
+  await click(button(host, "Drop one"));
+  assert.deepEqual(state.ids, ["x2", "x3"]);
+});
