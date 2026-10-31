@@ -531,6 +531,10 @@ ul.tb-access-rows,
   font-size: var(--tb-text-hint);
   font-weight: var(--tb-weight-body);
 }
+/* room for three lines: the level buttons must not move under the pointer when the sentence appears */
+.tb-access-sentence {
+  min-height: calc(var(--tb-s12) + var(--tb-s6));
+}
 .tb-access-levels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));

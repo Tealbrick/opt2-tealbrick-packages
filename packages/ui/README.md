@@ -7,7 +7,7 @@ The Tealbrick design system for every opt2 surface (Portal GUI, mini apps, websi
 Releases are CI-built GitHub tarballs (never npm). The repository is private, so install from the public mirror in `Tealbrick/opt2-tealbrick-dist`. Pin the URL and its integrity (`coordination/specs/RELEASES.md`):
 
 ```json
-"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.4.0/opt2-tealbrick-ui-0.4.0.tgz"
+"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.4.1/opt2-tealbrick-ui-0.4.1.tgz"
 ```
 
 ## Use

@@ -1,5 +1,11 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.4.1 (2026-10-31)
+
+Fixes for 0.4.0 from the live check on DEV (C382). No API change.
+- AccessEditor: the level buttons no longer move when the sentence above them appears. A click meant for one level could land on another.
+- AccessEditor: a shorter filter hint, one line in a column at 1440px.
+
 ## 0.4.0 (2026-10-31)
 
 New component, no breaking change (C382). Apps on 0.2.4 also pick up 0.3.0 when they move here: read that section.
