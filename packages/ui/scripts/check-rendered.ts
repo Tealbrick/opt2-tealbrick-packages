@@ -39,6 +39,7 @@ const pages: [string, number, number[]?][] = [ // [gallery view (query), StepFlo
   ['index.html?view=shell', 0], ['index.html?view=dialog', 0], ['index.html?view=toast', 0], ['index.html?view=stepflow', 4],
   ['index.html?view=reading', 0, [1280, 1440, 375]], // 0.2.3: tinted panel with controls, prose lists, narrow Select
   ['index.html?view=table', 0], // 0.3.0: Receipts-style ledger table (stacked at <= 480px)
+  ['index.html?view=access', 0, [1440, 1280, 375]], ['index.html?view=access&step=many', 0, [1440, 1280, 375]], // 0.4.0: AccessEditor, defaults + differences, and the three-column picker
 ];
 
 /* runs in the page: composited contrast of text and outlines inside `scope` */
@@ -450,6 +451,37 @@ const tableFails: string[] = [];
 }
 for (const f of tableFails) console.error(`TABLE ${f}`);
 console.log(`table: stacked at <= 480px (no sideways scroll, every column and label shown, AA labels), ledger at 1280, light + dark: ${tableFails.length} failures (self-test ok)`);
+
+/* 0.4.0 AccessEditor layout (C382). At 1440, 1280 and 375, both views, 32 agents x 192 scopes: no sideways page scroll, every
+   control and pick row at least 44px tall (target size), at most 3 dropdowns (no cross-product). Self-test (L34): fires on a
+   pick row forced to 30px and a row forced to 3000px wide. */
+const accessCheck = () => {
+  const bad: string[] = [];
+  const root = document.documentElement;
+  if (root.scrollWidth > root.clientWidth) bad.push(`page scrolls sideways: ${root.scrollWidth} > ${root.clientWidth}`);
+  const boxes = document.querySelectorAll('[data-gallery="access"] .tb-btn, [data-gallery="access"] .tb-input, [data-gallery="access"] .tb-select-trigger, [data-gallery="access"] .tb-access-pick');
+  for (const b of boxes) { const h = b.getBoundingClientRect().height; if (h > 0 && h < 44) bad.push(`target ${h}px: ${(b.textContent ?? '').slice(0, 30)}`); }
+  const drops = document.querySelectorAll('[data-gallery="access"] [role="combobox"]').length;
+  if (drops > 3) bad.push(`${drops} dropdowns`);
+  return bad;
+};
+const accessFails: string[] = [];
+if (!ONLY || ONLY.includes('access')) {
+  const c0 = await browser.newContext({ viewport: { width: 1440, height: 860 } }); const p0 = await c0.newPage();
+  await p0.goto(base + 'index.html?view=access&big=1&step=many'); await p0.waitForSelector('.tb-access-pick');
+  await p0.addStyleTag({ content: '.tb-access-pick{min-height:30px!important;height:30px!important;padding:0!important}.tb-access-head{min-width:3000px}' });
+  const fired = await p0.evaluate(accessCheck);
+  if (!fired.some(x => x.includes('sideways')) || !fired.some(x => x.startsWith('target'))) accessFails.push(`self-test did not fire: ${fired.slice(0, 3).join('; ')}`);
+  await c0.close();
+  for (const file of ['index.html?view=access&big=1', 'index.html?view=access&big=1&step=many']) for (const width of [1440, 1280, 375]) {
+    const c2 = await browser.newContext({ viewport: { width, height: 860 } }); const p2 = await c2.newPage();
+    await p2.goto(base + file); await p2.waitForSelector('[data-gallery="access"] .tb-btn');
+    for (const b of await p2.evaluate(accessCheck)) accessFails.push(`${file} ${width}: ${b}`);
+    await c2.close();
+  }
+}
+for (const f of accessFails) console.error(`ACCESS ${f}`);
+console.log(`access: both views at 1440/1280/375, no sideways scroll, 44px targets, at most 3 dropdowns: ${accessFails.length} failures (self-test ok)`);
 
 const inkFails = inkRows.filter(r => Math.abs(r.diff) > .5);
 const byControl = new Map<string, number[]>();

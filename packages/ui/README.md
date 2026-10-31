@@ -7,7 +7,7 @@ The Tealbrick design system for every opt2 surface (Portal GUI, mini apps, websi
 Releases are CI-built GitHub tarballs (never npm). The repository is private, so install from the public mirror in `Tealbrick/opt2-tealbrick-dist`. Pin the URL and its integrity (`coordination/specs/RELEASES.md`):
 
 ```json
-"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.3.0/opt2-tealbrick-ui-0.3.0.tgz"
+"@opt2-tealbrick/ui": "https://github.com/Tealbrick/opt2-tealbrick-dist/releases/download/opt2-tealbrick-packages-ui-v0.4.0/opt2-tealbrick-ui-0.4.0.tgz"
 ```
 
 ## Use
@@ -24,6 +24,10 @@ import { resolved, cssVar } from "@opt2-tealbrick/ui/tokens"; // literal values 
 Put `class="tb-root"` on the page root. Dark values apply under `data-theme="dark"` (TBD only for now, C148).
 
 App stills (10 apps: the 7 opt2 apps, Observer, Live Artifacts and Creative): copy `node_modules/@opt2-tealbrick/ui/assets/apps/` to your public folder, then `appArt(productId, "/that/path/")`. This is interim, until the manifest carries `ui.art`.
+
+## Access pages
+
+`AccessEditor` replaces a grid of agents and scopes: the defaults once, then only what differs, plus a bulk editor. Give it the app's levels and default rule from `tealbrick.manifest.json`, the stored rows, and the app's existing per-cell write. See `src/components/access.tsx`.
 
 ## Guard (run it in CI)
 
