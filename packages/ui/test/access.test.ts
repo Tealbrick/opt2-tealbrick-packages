@@ -194,7 +194,7 @@ test("Back to default writes the default level; a failure is said and not report
   await m.unmount();
 });
 
-test("long lists page: 50 rows, then more on request; the filter narrows and is remembered per viewer", async (t) => {
+test("long lists start with 3 rows and View more, then page by 50; a filter shows every match and is remembered per viewer", async (t) => {
   const { AccessEditor } = await ui();
   const cells = AGENTS.flatMap((a) => SCOPES.slice(1, 11).map((s) => ({ agent: a.id, scope: s.id, level: "read" })));
   const storageKey = `test:${Math.random()}`;
@@ -209,16 +209,47 @@ test("long lists page: 50 rows, then more on request; the filter narrows and is 
     else delete (globalThis as { localStorage?: unknown }).localStorage;
   });
   const m = await mount(h(AccessEditor, props({ cells, storageKey })));
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 50);
+  const backs = () => m.root.querySelectorAll("button[aria-label^='Back to default']").length;
+  // Martin 2026-11-10: three lines first, "View more" opens the list (then pages of 50)
+  assert.equal(backs(), 3);
+  assert.match(m.root.textContent ?? "", /Showing 3 of \d{3}\./);
+  await click(button(m.root, /^View more$/));
+  assert.equal(backs(), 50);
   await click(button(m.root, /^Show 50 more$/));
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 100);
+  assert.equal(backs(), 100);
+  // a filter shows its matches 200 at a time (no 50-row paging); "Show N more" for the rest
+  await type(m.root.querySelector("input") as HTMLInputElement, "^QA fleet");
+  const matches = Number((m.root.textContent ?? "").match(/Showing 200 of ([\d,]+) that match\./)?.[1]?.replace(",", "") ?? "0");
+  assert.ok(matches > 200, `matches ${matches}`);
+  assert.equal(backs(), 200);
+  await click(button(m.root, new RegExp(`^Show ${Math.min(200, matches - 200)} more$`)));
+  assert.equal(backs(), Math.min(400, matches));
   await type(m.root.querySelector("input") as HTMLInputElement, "^Henry to QA project 1$");
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 1);
+  assert.equal(backs(), 1);
   await m.unmount();
   const again = await mount(h(AccessEditor, props({ cells, storageKey })));
   assert.equal((again.root.querySelector("input") as HTMLInputElement).value, "^Henry to QA project 1$");
   assert.equal(again.root.querySelectorAll("button[aria-label^='Back to default']").length, 1);
   await again.unmount();
+});
+
+test("View more moves the keyboard to the list head; a list of 3 or fewer rows has no View more", async () => {
+  const { AccessEditor } = await ui();
+  const many = AGENTS.slice(0, 6).map((a) => ({ agent: a.id, scope: SCOPES[1]!.id, level: "read" }));
+  const m = await mount(h(AccessEditor, props({ cells: many, storageKey: `test:${Math.random()}` })));
+  await click(button(m.root, /^View more$/));
+  assert.equal((document.activeElement as HTMLElement | null)?.textContent, "What differs from the default");
+  assert.equal(
+    [...m.root.querySelectorAll("button")].some((b) => b.textContent?.trim() === "View more"),
+    false,
+  );
+  await m.unmount();
+  const few = await mount(h(AccessEditor, props({ cells: [...allDefault, ...many.slice(0, 1)], storageKey: `test:${Math.random()}` })));
+  assert.equal(
+    [...few.root.querySelectorAll("button")].some((b) => b.textContent?.trim() === "View more"),
+    false,
+  );
+  await few.unmount();
 });
 
 test("storage that throws does not break the page", async () => {

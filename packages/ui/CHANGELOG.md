@@ -1,5 +1,10 @@
 # @opt2-tealbrick/ui changelog
 
+## 0.7.2 (2026-11-10)
+
+No breaking change. Apps get it at their next release.
+- `AccessEditor`, "What differs from the default": the list starts with 3 rows and "View more" (`ACCESS_ROWS_COLLAPSED`); after that it pages by 50 as before. A filter shows every matching row at once (no paging), with "The filter shows N of M". The full list was hard to read in Connect with many agents and accounts (Martin, 2026-11-10).
+
 ## 0.7.1 (2026-11-01)
 
 C382 batch 4, from the review. No breaking change.
