@@ -194,7 +194,7 @@ test("Back to default writes the default level; a failure is said and not report
   await m.unmount();
 });
 
-test("long lists page: 50 rows, then more on request; the filter narrows and is remembered per viewer", async (t) => {
+test("long lists start with 3 rows and View more, then page by 50; a filter shows every match and is remembered per viewer", async (t) => {
   const { AccessEditor } = await ui();
   const cells = AGENTS.flatMap((a) => SCOPES.slice(1, 11).map((s) => ({ agent: a.id, scope: s.id, level: "read" })));
   const storageKey = `test:${Math.random()}`;
@@ -209,11 +209,23 @@ test("long lists page: 50 rows, then more on request; the filter narrows and is 
     else delete (globalThis as { localStorage?: unknown }).localStorage;
   });
   const m = await mount(h(AccessEditor, props({ cells, storageKey })));
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 50);
+  const backs = () => m.root.querySelectorAll("button[aria-label^='Back to default']").length;
+  // Martin 2026-11-10: three lines first, "View more" opens the list (then pages of 50)
+  assert.equal(backs(), 3);
+  assert.match(m.root.textContent ?? "", /Showing 3 of \d{3}\./);
+  await click(button(m.root, /^View more$/));
+  assert.equal(backs(), 50);
   await click(button(m.root, /^Show 50 more$/));
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 100);
+  assert.equal(backs(), 100);
+  // a filter shows every match, also past 50
+  await type(m.root.querySelector("input") as HTMLInputElement, "^QA fleet");
+  assert.ok(backs() > 50, `${backs()} rows with the filter`);
+  assert.equal(
+    [...m.root.querySelectorAll("button")].some((b) => /^(View more|Show \d+ more)$/.test(b.textContent?.trim() ?? "")),
+    false,
+  );
   await type(m.root.querySelector("input") as HTMLInputElement, "^Henry to QA project 1$");
-  assert.equal(m.root.querySelectorAll("button[aria-label^='Back to default']").length, 1);
+  assert.equal(backs(), 1);
   await m.unmount();
   const again = await mount(h(AccessEditor, props({ cells, storageKey })));
   assert.equal((again.root.querySelector("input") as HTMLInputElement).value, "^Henry to QA project 1$");
