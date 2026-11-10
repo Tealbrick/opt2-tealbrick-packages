@@ -407,8 +407,10 @@ export type AccessBulkProps = WriteProps & {
 
 const CONFIRM_ABOVE = 25;
 const PAGE = 50;
-/** "What differs from the default" starts with this many rows and a "View more" button; a filter shows every match. */
+/** "What differs from the default" starts with this many rows and a "View more" button. */
 export const ACCESS_ROWS_COLLAPSED = 3;
+/** With a filter on, this many matching rows show at once (then "Show more"), so a broad filter never renders thousands of rows. */
+export const ACCESS_ROWS_FILTERED = 200;
 const NO_WORDS: AccessWords = {};
 const AGENT_WORD: Word = { one: "agent", many: "agents" };
 const UNIT_WORD: Word = { one: "permission", many: "permissions" };
@@ -680,6 +682,7 @@ function AccessList({
   const [limit, setLimit] = useState(PAGE);
   // Martin 2026-11-10: the full list gets messy; three lines first, "View more" opens it, a filter shows every match
   const [expanded, setExpanded] = useState(false);
+  const [filteredLimit, setFilteredLimit] = useState(ACCESS_ROWS_FILTERED);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [addAgent, setAddAgent] = useState("");
@@ -692,7 +695,9 @@ function AccessList({
   const shown = rows.filter((r) => filter.test(whoOf(r.agent.id, r.scope.id)));
   const filtering = query.trim() !== "";
   const collapsed = !filtering && !expanded && shown.length > ACCESS_ROWS_COLLAPSED;
-  const visible = filtering ? shown : collapsed ? shown.slice(0, ACCESS_ROWS_COLLAPSED) : shown.slice(0, limit);
+  const visible = filtering ? shown.slice(0, filteredLimit) : collapsed ? shown.slice(0, ACCESS_ROWS_COLLAPSED) : shown.slice(0, limit);
+  // a new filter starts again at the first page of matches
+  useEffect(() => setFilteredLimit(ACCESS_ROWS_FILTERED), [query]);
   const combos = agents.length * scopes.length;
   const different = rows.filter((r) => r.differs).length;
   const waiting = rows.filter((r) => r.cell?.action).length;
@@ -810,7 +815,23 @@ function AccessList({
           {collapsed ? (
             <div className="tb-access-more">
               <span>{`Showing ${ACCESS_ROWS_COLLAPSED} of ${shown.length.toLocaleString("en")}.`}</span>
-              <Button onClick={() => setExpanded(true)}>View more</Button>
+              <Button
+                onClick={() => {
+                  setExpanded(true);
+                  // the button leaves the page: keep the keyboard in the list
+                  listHead.current?.focus();
+                }}
+              >
+                View more
+              </Button>
+            </div>
+          ) : null}
+          {filtering && shown.length > filteredLimit ? (
+            <div className="tb-access-more">
+              <span>{`Showing ${filteredLimit.toLocaleString("en")} of ${shown.length.toLocaleString("en")} that match.`}</span>
+              <Button onClick={() => setFilteredLimit((n) => n + ACCESS_ROWS_FILTERED)}>
+                Show {Math.min(ACCESS_ROWS_FILTERED, shown.length - filteredLimit)} more
+              </Button>
             </div>
           ) : null}
           {!filtering && !collapsed && shown.length > limit ? (
